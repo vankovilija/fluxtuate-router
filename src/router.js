@@ -1,0 +1,431 @@
+import {Context} from "fluxtuate"
+import EventDispatcher from "fluxtuate/lib/event-dispatcher/retain-event-dispatcher"
+import History from "./history"
+import Crossroads from "crossroads"
+import JSON_URI from "json-uri"
+import {autobind} from "core-decorators"
+import { isArray, isObject } from "lodash/lang";
+import {isFunction} from "lodash/lang"
+import {differenceBy, findIndex} from "lodash/array"
+
+Crossroads.greedyEnabled = false;
+Crossroads.normalizeFn = Crossroads.NORM_AS_OBJECT;
+
+const pagesKey = Symbol("fluxtuateRouter_pages");
+const routes = Symbol("fluxtuateRouter_routes");
+const notFoundRoute = Symbol("fluxtuateRouter_notFoundRoute");
+const activeURI = Symbol("fluxtuateRouter_activeURI");
+const activeRoute = Symbol("fluxtuateRouter_activeRoute");
+const activePage = Symbol("fluxtuateRouter_activePage");
+const activeParams = Symbol("fluxtuateRouter_activeParams");
+const loadRoute = Symbol("fluxtuateRouter_loadPage");
+const calculateURIState = Symbol("fluxtuateRouter_calculateURIState");
+const getPagePath = Symbol("fluxtuateRouter_getPagePath");
+const configToRoute = Symbol("fluxtuateRouter_configToRoute");
+const configToPage = Symbol("fluxtuateRouter_configToRoute");
+const started = Symbol("fluxtuateRouter_started");
+const routeContext = Symbol("fluxtuateRouter_routeContext");
+const routeConfig = Symbol("fluxtuateRouter_routeConfig");
+const query = Symbol("fluxtuateRouter_query");
+const baseURL = Symbol("fluxtuateRouter_base");
+
+const propsRegex = /{([^}]*)}|:([^:]*):/gi;
+
+function compressParams(keys, index, params, cb){
+    if(index >= keys.length){
+        cb(params);
+        return;
+    }
+
+    var param = params[keys[index]];
+    if(isObject(param) || isArray(param)){
+        if(param.length === 0 || Object.keys(param).length === 0){
+            params[keys[index]] = "";
+            compressParams(keys, index + 1, params, cb);
+        }else {
+            params[keys[index]] = JSON_URI.encode(JSON.stringify(param));
+            compressParams(keys, index + 1, params, cb);
+        }
+    }else{
+        compressParams(keys, index + 1, params, cb);
+    }
+}
+
+function processRoute(r, queryParams = {}) {
+    let route = r;
+    //if the first char is not slash - add slash
+    if(route[0] !== "/") {
+        route = "/" + route;
+    }
+    //if the route is just slash that means root and don't remove the last slash
+    if (!(route && route.length == 1 && route === "/")) {
+        //if the last char is slash - remove it
+        if (route[route.length - 1] === "/") {
+            route = route.slice(0, route.length - 1);
+        }
+    }
+
+
+    let count = 0;
+    for (let key in queryParams) {
+
+        if(count > 0) {
+            route += "&";
+        }else{
+            route += "?";
+        }
+
+        route += `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`;
+
+        count ++;
+    }
+    
+    return route;
+}
+
+@autobind
+export default class Router extends EventDispatcher {
+    constructor(parentRouter, transferQuery = [], base = "") {
+        super(parentRouter);
+        this[activeURI] = "";
+        this[activeParams] = {};
+        this[routes] = {};
+        this[pagesKey] = {};
+        this[notFoundRoute] = "/404";
+        this[started] = false;
+        this[configToRoute] = {};
+        this[configToPage] = {};
+        this[routeContext] = [];
+        this[routeConfig] = [];
+        this[query] = {};
+        this[baseURL] = base;
+        
+        this.transferQuery = transferQuery;
+
+        Object.defineProperty(this, "query", {
+            get() {
+                return Object.assign({}, this[query]);
+            }
+        });
+
+        this[getPagePath] = (pageName, params, cb)=>{
+            let allPages = this[pagesKey];
+
+            if (!allPages.hasOwnProperty(pageName)) {
+                this.goToRoute(this[notFoundRoute]);
+                return;
+            }
+
+            let pagePath = allPages[pageName];
+
+            if(params === undefined){
+                params = {};
+            }
+
+            compressParams(Object.keys(params), 0, params, function(params) {
+
+                let checkPath = pagePath;
+                let pageMatch;
+                while ((pageMatch = propsRegex.exec(checkPath)) !== null) {
+                    var matchValue = pageMatch[1] || pageMatch[2];
+                    if (params.hasOwnProperty(matchValue) && params[matchValue] !== undefined && params[matchValue] !== null) {
+                        pagePath = pagePath.replace(pageMatch[0], params[matchValue]);
+                    } else {
+                        pagePath = pagePath.replace(pageMatch[0] + "/", "");
+                        pagePath = pagePath.replace(pageMatch[0], "");
+                    }
+                }
+
+                propsRegex.lastIndex = 0;
+
+                cb(pagePath);
+            }.bind(this));
+        };
+
+        this[calculateURIState] = () => {
+            var State = History.getState();
+            var uriArray = State.hash.split("?");
+            let uri = uriArray[0];
+            let queryArray = uriArray[1];
+            this[query] = {};
+            if(queryArray) {
+                queryArray = queryArray.split("&");
+                queryArray.forEach((q)=> {
+                    let qa = q.split("=");
+                    this[query][qa[0]] = decodeURIComponent(qa[1]);
+                });
+            }
+            uri = uri.replace(this[baseURL], "");
+            if(activeURI !== uri)
+                Crossroads.parse(uri);
+            this[activeURI] = uri;
+        };
+
+        Crossroads.bypassed.add(()=>{
+            this.replaceRoute(this[notFoundRoute]);
+        });
+
+        this[loadRoute] = (route, params)=>{
+            let pageName;
+            for(let k in this[pagesKey]){
+                if(this[pagesKey][k] === route){
+                    pageName = k;
+                    break;
+                }
+            }
+
+            for(let key in params){
+                let param = params[key];
+
+                if(param === undefined){
+                    delete params[key];
+                    continue;
+                }
+
+                let isJSON = true;
+                try {
+                    param = JSON_URI.decode(param);
+                    try {
+                        param = JSON.parse(param);
+                    }catch(e){
+                        isJSON = false;
+                    }
+                }catch (e){
+                    isJSON = false;
+                }
+
+                if(!isJSON){
+                    param = params[key];
+                }
+
+                params[key] = param;
+            }
+
+            let newConfig = [].concat(this[configToRoute][route], this[configToPage][pageName]);
+            
+            newConfig = newConfig.filter((con) => con && con.config?true:false);
+
+            let addingDifference = differenceBy(newConfig, this[routeConfig], (con)=>con.config);
+            let excludingDifference = differenceBy(this[routeConfig], newConfig, (con)=>con.config);
+
+            let leftConfig = this[routeConfig].filter((con)=>excludingDifference.indexOf(con) === -1);
+
+            for(let i = 0; i < leftConfig.length; i++) {
+                let index = findIndex(newConfig, {config: leftConfig[i].config});
+                if(newConfig[index].controller !== leftConfig[i].controller) {
+                    let rIndex = this[routeConfig].indexOf(leftConfig[i]);
+                    let context = this[routeContext][rIndex];
+
+                    if(leftConfig[i].controller)
+                        context.detachController(leftConfig[i].controller);
+
+                    if(newConfig[index].controller)
+                        context.attachController(newConfig[index].controller);
+
+                    this[routeConfig].splice(rIndex, 1, newConfig[index]);
+                }
+            }
+
+            if(addingDifference.length > 0 || excludingDifference.length > 0){
+                excludingDifference.forEach((config)=>{
+                    let i = this[routeConfig].indexOf(config);
+                    let context = this[routeContext][i];
+
+                    let fullContextChildren = context.children.slice();
+                    fullContextChildren.forEach(c=> {
+                        context.removeChild(c);
+                        context.parent.addChild(c);
+                    });
+
+                    context.destroy();
+
+                    this[routeContext].splice(i, 1);
+                    this[routeConfig].splice(i, 1);
+                });
+
+                addingDifference.forEach((configObject)=>{
+                    let newContext = new Context();
+                    newContext.config(configObject.config);
+                    if(configObject.controller){
+                        newContext.attachController(configObject.controller);
+                    }
+
+                    let parent = this.routeLastContext;
+                    this[routeConfig].push(configObject);
+                    this[routeContext].push(newContext);
+                    if(parent){
+                        parent.children.forEach(c=>{
+                            parent.removeChild(c);
+                            newContext.addChild(c);
+                        });
+                        parent.addChild(newContext);
+                    }
+                });
+
+                this.dispatch("route_context_updated", {
+                    page: pageName,
+                    path: route,
+                    routeDefaults: this[routes][route],
+                    params: params,
+                    startingContext: this.routeFirstContext,
+                    endingContext: this.routeLastContext
+                });
+            }
+
+            this.dispatch("route_changed", {
+                page: pageName,
+                path: route,
+                routeDefaults: this[routes][route],
+                params: params
+            });
+
+            this[activeRoute] = route;
+            this[activePage] = pageName;
+            this[activeParams] = params;
+        }
+    }
+
+    startRouter() {
+        History.Adapter.bind(window,"statechange",this[calculateURIState]);
+        History.Adapter.onDomLoad(this[calculateURIState]);
+        this[started] = true;
+    }
+    
+    isRouteContext(context) {
+        return this[routeContext].indexOf(context) !== -1;
+    }
+    
+    get routeFirstContext() {
+        if(this[routeContext].length === 0) return undefined;
+        return this[routeContext][0];
+    }
+
+    get routeLastContext() {
+        if(this[routeContext].length === 0) return undefined;
+        return this[routeContext][this[routeContext].length - 1];
+    }
+    
+    get started() {
+        return this[started];
+    }
+    
+    mapConfig(Config, Controller) {
+        if(!Config){
+            throw new Error("You must provide a configuration class to do this mapping!");
+        }
+        
+        if(!isFunction(Config.prototype.configure)){
+            throw new Error("Configuration must contain a configure method!");
+        }
+        
+        let self = this;
+        return {
+            toRoute (route) {
+                if(!route) throw new Error("You must provide a route to map a config to a route!");
+                if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                self[configToRoute][route].push({config: Config, controller: Controller});
+            },
+            toPage (pageName) {
+                if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
+                if(!self[configToPage][pageName]) self[configToPage][pageName] = [];
+                self[configToPage][pageName].push({config: Config, controller: Controller});
+            }
+        };
+    }
+
+    mapRoute(route, params){
+        if(!params){
+            params = {};
+        }
+
+        if(this[routes][route]){
+            throw new Error(`Route ${route} is already defined!`);
+        }
+
+        this[routes][route] = params;
+        Crossroads.addRoute(route, this[loadRoute].bind(this, route));
+        let self = this;
+        return Object.assign({
+            toPage(pageName) {
+                self[pagesKey][pageName] = route;
+
+                return Object.assign({
+                    isNotFound() {
+                        this[notFoundRoute] = route;
+                        return self;
+                    }
+                }, self);
+            },
+            isNotFound() {
+                this[notFoundRoute] = route;
+                return self;
+            }
+        }, this);
+    }
+
+    goToRoute(route, query = {}){
+        let defQuery = {};
+        this.transferQuery.forEach((qN)=>{
+            if(this.query[qN])
+                defQuery[qN] = this.query[qN];
+        });
+        
+        route = processRoute(route, Object.assign({}, query, defQuery));
+
+        route = this[baseURL] + route;
+        setTimeout(()=>{
+            History.pushState(undefined, document.title, route);
+        }, 0);
+    }
+
+    goBack() {
+        History.back();
+    }
+
+    replaceRoute(route, query = {}){
+        let defQuery = {};
+        this.transferQuery.forEach((qN)=>{
+            defQuery[qN] = this.query[qN];
+        });
+        
+        route = processRoute(route, Object.assign({}, query, defQuery));
+
+        route = this[baseURL] + route;
+        setTimeout(()=>{
+            History.replaceState(undefined, document.title, route);
+        }, 0);
+    }
+
+    refresh(){
+        var State = History.getState();
+        this.replaceRoute(State.hash.replace(this[baseURL], ""));
+    }
+
+    goToPage (pageName, params, queryParams = {}){
+        this[getPagePath](pageName, params, (pagePath)=>{
+            this.goToRoute(pagePath, queryParams);
+        });
+    }
+
+    replacePage (pageName, params, queryParams = {}){
+        this[getPagePath](pageName, params, (pagePath)=>{
+            this.replaceRoute(pagePath, queryParams);
+        });
+    }
+    
+    get route() {
+        return this[activeRoute];
+    }
+
+    get page(){
+        return this[activePage];
+    }
+    
+    get params() {
+        return this[activeParams];
+    }
+    
+    get routeDefaults() {
+        return Object.assign({}, this[routes][this.route]);
+    }
+}
