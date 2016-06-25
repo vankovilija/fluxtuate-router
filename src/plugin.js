@@ -3,10 +3,8 @@ import RetainDelegator from "fluxtuate/lib/delegator/retain-delegator"
 import Router from "./router"
 import {merge} from "lodash/object"
 import {flatten} from "lodash/array"
-import Promise from "bluebird"
 
 let router;
-let activePromises = [];
 
 const routerContextSymbol = Symbol("fluxtuateRouter_routerContext");
 
@@ -15,18 +13,10 @@ export default class RouterPlugin {
     contextDispatcher;
 
     @inject
-    controllerDelegate;
-    
-    @inject
-    injector;
-
-    @inject
     context;
     
     @inject
     options;
-
-    activePromise;
 
     mediators = [];
 
@@ -46,34 +36,22 @@ export default class RouterPlugin {
         this.previousRoute = undefined;
         this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
             this.routeListener1 = router.addListener("route_changed", (eventName, payload)=> {
-                let index = activePromises.indexOf(this.activePromise);
-                if (index !== -1) {
-                    activePromises.splice(index, 1);
-                }
-                this.activePromise = this.controllerDelegate.dispatchPromise("routeChanged", merge({}, payload));
-                activePromises.push(this.activePromise);
+                //TODO: dispatch event if event mapped
             }, 9999999999999999999);
 
             this.routeListener = router.addListener("route_changed", (eventName, payload)=> {
-                let currentPromise = this.activePromise;
-                Promise.all(activePromises).then((payloads)=> {
-                    if (currentPromise !== this.activePromise) return;
+                setTimeout(()=> {
+                    if (!this.medsDelegator) return;
 
-                    let flatPayloads = flatten(payloads);
-                    payload = merge.apply(merge, [{}, payload, ...flatPayloads]);
-                    setTimeout(()=> {
-                        if (!this.medsDelegator) return;
-
-                        this.medsDelegator.dispatch("onNavStackChange", payload.params, payload.routeDefaults, this.previousRoute);
-                        this.previousRoute = {
-                            params: payload.params,
-                            routeDefaults: payload.routeDefaults
-                        };
-                        this.mediators.forEach((med)=> {
-                            med.hasNavstack = true;
-                        });
-                    }, 10);
-                });
+                    this.medsDelegator.dispatch("onNavStackChange", payload.params, payload.routeDefaults, this.previousRoute);
+                    this.previousRoute = {
+                        params: payload.params,
+                        routeDefaults: payload.routeDefaults
+                    };
+                    this.mediators.forEach((med)=> {
+                        med.hasNavstack = true;
+                    });
+                }, 10);
             }, -10000);
 
             this.mediatorListner = this.contextDispatcher.addListener("mediator_created", (eventName, payload)=> {
@@ -200,13 +178,6 @@ export default class RouterPlugin {
         if(this.removingChildListener) {
             this.removingChildListener.remove();
             this.removingChildListener = null;
-        }
-
-        if(this.activePromise) {
-            let index = activePromises.indexOf(this.activePromise);
-            if(index !== -1) {
-                activePromises.splice(index, 1);
-            }
         }
         
         if(this.removeValue) {

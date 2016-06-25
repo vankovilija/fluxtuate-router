@@ -208,24 +208,6 @@ export default class Router extends EventDispatcher {
             let addingDifference = differenceBy(newConfig, this[routeConfig], (con)=>con.config);
             let excludingDifference = differenceBy(this[routeConfig], newConfig, (con)=>con.config);
 
-            let leftConfig = this[routeConfig].filter((con)=>excludingDifference.indexOf(con) === -1);
-
-            for(let i = 0; i < leftConfig.length; i++) {
-                let index = findIndex(newConfig, {config: leftConfig[i].config});
-                if(newConfig[index].controller !== leftConfig[i].controller) {
-                    let rIndex = this[routeConfig].indexOf(leftConfig[i]);
-                    let context = this[routeContext][rIndex];
-
-                    if(leftConfig[i].controller)
-                        context.detachController(leftConfig[i].controller);
-
-                    if(newConfig[index].controller)
-                        context.attachController(newConfig[index].controller);
-
-                    this[routeConfig].splice(rIndex, 1, newConfig[index]);
-                }
-            }
-
             if(addingDifference.length > 0 || excludingDifference.length > 0){
                 excludingDifference.forEach((config)=>{
                     let i = this[routeConfig].indexOf(config);
@@ -246,9 +228,6 @@ export default class Router extends EventDispatcher {
                 addingDifference.forEach((configObject)=>{
                     let newContext = new Context();
                     newContext.config(configObject.config);
-                    if(configObject.controller){
-                        newContext.attachController(configObject.controller);
-                    }
 
                     let parent = this.routeLastContext;
                     this[routeConfig].push(configObject);
@@ -309,7 +288,7 @@ export default class Router extends EventDispatcher {
         return this[started];
     }
     
-    mapConfig(Config, Controller) {
+    mapConfig(Config) {
         if(!Config){
             throw new Error("You must provide a configuration class to do this mapping!");
         }
@@ -323,12 +302,12 @@ export default class Router extends EventDispatcher {
             toRoute (route) {
                 if(!route) throw new Error("You must provide a route to map a config to a route!");
                 if(!self[configToRoute][route]) self[configToRoute][route] = [];
-                self[configToRoute][route].push({config: Config, controller: Controller});
+                self[configToRoute][route].push({config: Config});
             },
             toPage (pageName) {
                 if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
                 if(!self[configToPage][pageName]) self[configToPage][pageName] = [];
-                self[configToPage][pageName].push({config: Config, controller: Controller});
+                self[configToPage][pageName].push({config: Config});
             }
         };
     }
