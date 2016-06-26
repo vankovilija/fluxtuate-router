@@ -7,6 +7,7 @@ import {autobind} from "core-decorators"
 import { isArray, isObject } from "lodash/lang";
 import {isFunction} from "lodash/lang"
 import {differenceBy, findIndex} from "lodash/array"
+import Promise from "bluebird"
 
 Crossroads.greedyEnabled = false;
 Crossroads.normalizeFn = Crossroads.NORM_AS_OBJECT;
@@ -210,19 +211,31 @@ export default class Router extends EventDispatcher {
 
             let leftConfig = this[routeConfig].filter((con)=>excludingDifference.indexOf(con) === -1);
 
+            let routeChangePromises = [new Promise((resolve)=>resolve())];
+
             for(let i = 0; i < leftConfig.length; i++) {
                 let index = findIndex(newConfig, {config: leftConfig[i].config});
-                if(newConfig[index].controller !== leftConfig[i].controller) {
-                    let rIndex = this[routeConfig].indexOf(leftConfig[i]);
+                let rIndex = this[routeConfig].indexOf(leftConfig[i]);
+                this[routeConfig].splice(rIndex, 1, newConfig[index]);
+                if(newConfig[index].event) {
                     let context = this[routeContext][rIndex];
 
-                    if(leftConfig[i].controller)
-                        context.detachController(leftConfig[i].controller);
+                    context.dispatch(newConfig[index].event, {
+                        page: pageName,
+                        path: route,
+                        routeDefaults: this[routes][route],
+                        params: params
+                    });
 
-                    if(newConfig[index].controller)
-                        context.attachController(newConfig[index].controller);
-
-                    this[routeConfig].splice(rIndex, 1, newConfig[index]);
+                    routeChangePromises.push(new Promise((resolve)=>{
+                        setTimeout(function(event){
+                            if(context.commandMap.hasEvent(event)) {
+                                context.commandMap.onComplete(resolve);
+                            }else{
+                                resolve();
+                            }
+                        }.bind(this, newConfig[index].event), 0);
+                    }));
                 }
             }
 
@@ -246,10 +259,25 @@ export default class Router extends EventDispatcher {
                 addingDifference.forEach((configObject)=>{
                     let newContext = new Context();
                     newContext.config(configObject.config);
-                    if(configObject.controller){
-                        newContext.attachController(configObject.controller);
+                    if(configObject.event){
+                        setTimeout(()=>{
+                            newContext.dispatch(configObject.event, {
+                                page: pageName,
+                                path: route,
+                                routeDefaults: this[routes][route],
+                                params: params
+                            }); 
+                        }, 0);
+                        routeChangePromises.push(new Promise((resolve)=>{
+                            setTimeout(function(event){
+                                if(newContext.commandMap.hasEvent(event)) {
+                                    newContext.commandMap.onComplete(resolve);
+                                }else{
+                                    resolve();
+                                }
+                            }.bind(this, configObject.event), 0);
+                        }));
                     }
-
                     let parent = this.routeLastContext;
                     this[routeConfig].push(configObject);
                     this[routeContext].push(newContext);
@@ -261,7 +289,6 @@ export default class Router extends EventDispatcher {
                         parent.addChild(newContext);
                     }
                 });
-
                 this.dispatch("route_context_updated", {
                     page: pageName,
                     path: route,
@@ -272,11 +299,13 @@ export default class Router extends EventDispatcher {
                 });
             }
 
-            this.dispatch("route_changed", {
-                page: pageName,
-                path: route,
-                routeDefaults: this[routes][route],
-                params: params
+            Promise.all(routeChangePromises).then(()=>{
+                this.dispatch("route_changed", {
+                    page: pageName,
+                    path: route,
+                    routeDefaults: this[routes][route],
+                    params: params
+                });
             });
 
             this[activeRoute] = route;
@@ -309,7 +338,7 @@ export default class Router extends EventDispatcher {
         return this[started];
     }
     
-    mapConfig(Config, Controller) {
+    mapConfig(Config) {
         if(!Config){
             throw new Error("You must provide a configuration class to do this mapping!");
         }
@@ -317,18 +346,30 @@ export default class Router extends EventDispatcher {
         if(!isFunction(Config.prototype.configure)){
             throw new Error("Configuration must contain a configure method!");
         }
+
+        let returnObject = {config: Config};
         
         let self = this;
         return {
             toRoute (route) {
                 if(!route) throw new Error("You must provide a route to map a config to a route!");
                 if(!self[configToRoute][route]) self[configToRoute][route] = [];
-                self[configToRoute][route].push({config: Config, controller: Controller});
+                self[configToRoute][route].push(returnObject);
+                return {
+                    withEvent(eventName) {
+                        returnObject.event = eventName;
+                    }
+                }
             },
             toPage (pageName) {
                 if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
                 if(!self[configToPage][pageName]) self[configToPage][pageName] = [];
-                self[configToPage][pageName].push({config: Config, controller: Controller});
+                self[configToPage][pageName].push(returnObject);
+                return {
+                    withEvent(eventName) {
+                        returnObject.event = eventName;
+                    }
+                }
             }
         };
     }
