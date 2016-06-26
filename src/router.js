@@ -227,11 +227,15 @@ export default class Router extends EventDispatcher {
                         params: params
                     });
 
-                    if(context.commandMap.hasEvent(configObject.event)){
-                        routeChangePromises.push(new Promise((resolve)=>{
-                            context.commandMap.onComplete(resolve);
-                        }));
-                    }
+                    routeChangePromises.push(new Promise((resolve)=>{
+                        setTimeout(function(event){
+                            if(context.commandMap.hasEvent(event)) {
+                                context.commandMap.onComplete(resolve);
+                            }else{
+                                resolve();
+                            }
+                        }.bind(this, newConfig[index].event), 0);
+                    }));
                 }
             }
 
@@ -257,18 +261,22 @@ export default class Router extends EventDispatcher {
                     newContext.config(configObject.config);
                     if(configObject.event){
                         setTimeout(()=>{
-                            context.dispatch(configObject.event, {
+                            newContext.dispatch(configObject.event, {
                                 page: pageName,
                                 path: route,
                                 routeDefaults: this[routes][route],
                                 params: params
                             }); 
                         }, 0);
-                        if(context.commandMap.hasEvent(configObject.event)){
-                            routeChangePromises.push(new Promise((resolve)=>{
-                                context.commandMap.onComplete(resolve);
-                            }));
-                        }
+                        routeChangePromises.push(new Promise((resolve)=>{
+                            setTimeout(function(event){
+                                if(newContext.commandMap.hasEvent(event)) {
+                                    newContext.commandMap.onComplete(resolve);
+                                }else{
+                                    resolve();
+                                }
+                            }.bind(this, configObject.event), 0);
+                        }));
                     }
                     let parent = this.routeLastContext;
                     this[routeConfig].push(configObject);
