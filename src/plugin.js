@@ -35,10 +35,6 @@ export default class RouterPlugin {
         this.medsDelegator = new RetainDelegator();
         this.previousRoute = undefined;
         this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
-            this.routeListener1 = router.addListener("route_changed", (eventName, payload)=> {
-                //TODO: dispatch event if event mapped
-            }, 9999999999999999999);
-
             this.routeListener = router.addListener("route_changed", (eventName, payload)=> {
                 setTimeout(()=> {
                     if (!this.medsDelegator) return;

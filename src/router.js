@@ -7,6 +7,7 @@ import {autobind} from "core-decorators"
 import { isArray, isObject } from "lodash/lang";
 import {isFunction} from "lodash/lang"
 import {differenceBy, findIndex} from "lodash/array"
+import Promise from "bluebird"
 
 Crossroads.greedyEnabled = false;
 Crossroads.normalizeFn = Crossroads.NORM_AS_OBJECT;
@@ -208,6 +209,35 @@ export default class Router extends EventDispatcher {
             let addingDifference = differenceBy(newConfig, this[routeConfig], (con)=>con.config);
             let excludingDifference = differenceBy(this[routeConfig], newConfig, (con)=>con.config);
 
+            let leftConfig = this[routeConfig].filter((con)=>excludingDifference.indexOf(con) === -1);
+
+            let routeChangePromises = [new Promise((resolve)=>resolve())];
+
+            for(let i = 0; i < leftConfig.length; i++) {
+                let index = findIndex(newConfig, {config: leftConfig[i].config});
+                let rIndex = this[routeConfig].indexOf(leftConfig[i]);
+                this[routeConfig].splice(rIndex, 1, newConfig[index]);
+                if(newConfig[index].event) {
+                    let context = this[routeContext][rIndex];
+
+                    context.dispatch(newConfig[index].event, {
+                        page: pageName,
+                        path: route,
+                        routeDefaults: this[routes][route],
+                        params: params
+                    });
+
+                    if(context.commandMap.hasEvent(configObject.event)){
+                        routeChangePromises.push(new Promise((resolve)=>{
+                            let completeListener = context.commandMap.onComplete(()=>{
+                                resolve();
+                                completeListener.remove();
+                            });
+                        }));
+                    }
+                }
+            }
+
             if(addingDifference.length > 0 || excludingDifference.length > 0){
                 excludingDifference.forEach((config)=>{
                     let i = this[routeConfig].indexOf(config);
@@ -228,7 +258,24 @@ export default class Router extends EventDispatcher {
                 addingDifference.forEach((configObject)=>{
                     let newContext = new Context();
                     newContext.config(configObject.config);
-
+                    if(configObject.event){
+                        setTimeout(()=>{
+                            context.dispatch(configObject.event, {
+                                page: pageName,
+                                path: route,
+                                routeDefaults: this[routes][route],
+                                params: params
+                            }); 
+                        }, 0);
+                        if(context.commandMap.hasEvent(configObject.event)){
+                            routeChangePromises.push(new Promise((resolve)=>{
+                                let completeListener = context.commandMap.onComplete(()=>{
+                                    resolve();
+                                    completeListener.remove();
+                                });
+                            }));
+                        }
+                    }
                     let parent = this.routeLastContext;
                     this[routeConfig].push(configObject);
                     this[routeContext].push(newContext);
@@ -240,7 +287,6 @@ export default class Router extends EventDispatcher {
                         parent.addChild(newContext);
                     }
                 });
-
                 this.dispatch("route_context_updated", {
                     page: pageName,
                     path: route,
@@ -251,11 +297,13 @@ export default class Router extends EventDispatcher {
                 });
             }
 
-            this.dispatch("route_changed", {
-                page: pageName,
-                path: route,
-                routeDefaults: this[routes][route],
-                params: params
+            Promise.all(routeChangePromises).then(()=>{
+                this.dispatch("route_changed", {
+                    page: pageName,
+                    path: route,
+                    routeDefaults: this[routes][route],
+                    params: params
+                });
             });
 
             this[activeRoute] = route;
@@ -296,18 +344,30 @@ export default class Router extends EventDispatcher {
         if(!isFunction(Config.prototype.configure)){
             throw new Error("Configuration must contain a configure method!");
         }
+
+        let returnObject = {config: Config};
         
         let self = this;
         return {
             toRoute (route) {
                 if(!route) throw new Error("You must provide a route to map a config to a route!");
                 if(!self[configToRoute][route]) self[configToRoute][route] = [];
-                self[configToRoute][route].push({config: Config});
+                self[configToRoute][route].push(returnObject);
+                return {
+                    withEvent(eventName) {
+                        returnObject.event = eventName;
+                    }
+                }
             },
             toPage (pageName) {
                 if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
                 if(!self[configToPage][pageName]) self[configToPage][pageName] = [];
-                self[configToPage][pageName].push({config: Config});
+                self[configToPage][pageName].push(returnObject);
+                return {
+                    withEvent(eventName) {
+                        returnObject.event = eventName;
+                    }
+                }
             }
         };
     }
