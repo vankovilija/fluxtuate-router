@@ -1,8 +1,7 @@
 import {Context, inject} from "fluxtuate"
 import RetainDelegator from "fluxtuate/lib/delegator/retain-delegator"
 import Router from "./router"
-import {merge} from "lodash/object"
-import {flatten} from "lodash/array"
+import RedirectCommand from "./redirect-command"
 
 let router;
 
@@ -30,7 +29,7 @@ export default class RouterPlugin {
         }
 
         this.removeValue = removeValue;
-        injectValue("router", router, "Gets the router for the application");
+        injectValue("router", router, "Gets the router for the application", false, "command");
 
         this.medsDelegator = new RetainDelegator();
         this.previousRoute = undefined;
@@ -88,6 +87,7 @@ export default class RouterPlugin {
         
         this.appStartingListener = this.contextDispatcher.addListener("starting", ()=>{
             if(!this.context.parent){
+                this.context.commandMap.mapEvent("REDIRECT").toCommand(RedirectCommand);
                 this.rootContext = new Context();
                 this.rootContext[routerContextSymbol] = true;
                 this.context[routerContextSymbol] = true;
