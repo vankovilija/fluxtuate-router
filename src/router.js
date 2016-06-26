@@ -229,10 +229,7 @@ export default class Router extends EventDispatcher {
 
                     if(context.commandMap.hasEvent(configObject.event)){
                         routeChangePromises.push(new Promise((resolve)=>{
-                            let completeListener = context.commandMap.onComplete(()=>{
-                                resolve();
-                                completeListener.remove();
-                            });
+                            context.commandMap.onComplete(resolve);
                         }));
                     }
                 }
@@ -269,10 +266,7 @@ export default class Router extends EventDispatcher {
                         }, 0);
                         if(context.commandMap.hasEvent(configObject.event)){
                             routeChangePromises.push(new Promise((resolve)=>{
-                                let completeListener = context.commandMap.onComplete(()=>{
-                                    resolve();
-                                    completeListener.remove();
-                                });
+                                context.commandMap.onComplete(resolve);
                             }));
                         }
                     }
