@@ -38,7 +38,7 @@ export default class RouterPlugin {
                 setTimeout(()=> {
                     if (!this.medsDelegator) return;
 
-                    this.medsDelegator.dispatch("onNavStackChange", payload.params, payload.routeDefaults, this.previousRoute);
+                    this.medsDelegator.dispatch("onNavStackChange", payload);
                     this.previousRoute = {
                         params: payload.params,
                         routeDefaults: payload.routeDefaults
