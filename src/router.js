@@ -206,15 +206,17 @@ export default class Router extends EventDispatcher {
 
             let newConfig = [].concat(this[configToRoute][route], this[configToPage][pageName]);
 
+            let routeProperties = {
+                page: pageName,
+                path: route,
+                routeDefaults: this[routes][route],
+                params: params,
+                query: this[query]
+            };
+
             newConfig.filter((con)=>con && !con.config).forEach((con) =>{
                 if(con.event){
-                    this[rootContext].dispatch(con.event, {
-                        page: pageName,
-                        path: route,
-                        routeDefaults: this[routes][route],
-                        params: params,
-                        query: this[query]
-                    });
+                    this[rootContext].dispatch(con.event, routeProperties);
                 }
             });
             
@@ -234,12 +236,7 @@ export default class Router extends EventDispatcher {
                 if(newConfig[index].event) {
                     let context = this[routeContext][rIndex];
 
-                    context.dispatch(newConfig[index].event, {
-                        page: pageName,
-                        path: route,
-                        routeDefaults: this[routes][route],
-                        params: params
-                    });
+                    context.dispatch(newConfig[index].event, routeProperties);
 
                     routeChangePromises.push(new Promise((resolve)=>{
                         setTimeout(function(event){
@@ -275,13 +272,7 @@ export default class Router extends EventDispatcher {
                     newContext.config(configObject.config);
                     if(configObject.event){
                         setTimeout(()=>{
-                            newContext.dispatch(configObject.event, {
-                                page: pageName,
-                                path: route,
-                                routeDefaults: this[routes][route],
-                                params: params,
-                                query: this[query]
-                            }); 
+                            newContext.dispatch(configObject.event, routeProperties);
                         }, 0);
                         routeChangePromises.push(new Promise((resolve)=>{
                             setTimeout(function(event){
@@ -304,24 +295,14 @@ export default class Router extends EventDispatcher {
                         parent.addChild(newContext);
                     }
                 });
-                this.dispatch("route_context_updated", {
-                    page: pageName,
-                    path: route,
-                    routeDefaults: this[routes][route],
-                    params: params,
+                this.dispatch("route_context_updated", Object.assign({
                     startingContext: this.routeFirstContext,
                     endingContext: this.routeLastContext
-                });
+                }, routeProperties));
             }
 
             Promise.all(routeChangePromises).then(()=>{
-                this.dispatch("route_changed", {
-                    page: pageName,
-                    path: route,
-                    routeDefaults: this[routes][route],
-                    params: params,
-                    query: this[query]
-                });
+                this.dispatch("route_changed", routeProperties);
             });
 
             this[activeRoute] = route;
