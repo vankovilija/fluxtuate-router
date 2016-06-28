@@ -29,6 +29,7 @@ const routeContext = Symbol("fluxtuateRouter_routeContext");
 const routeConfig = Symbol("fluxtuateRouter_routeConfig");
 const query = Symbol("fluxtuateRouter_query");
 const baseURL = Symbol("fluxtuateRouter_base");
+const rootContext = Symbol("fluxtuateRouter_rootContext");
 
 const propsRegex = /{([^}]*)}|:([^:]*):/gi;
 
@@ -86,8 +87,9 @@ function processRoute(r, queryParams = {}) {
 
 @autobind
 export default class Router extends EventDispatcher {
-    constructor(parentRouter, transferQuery = [], base = "") {
-        super(parentRouter);
+    constructor(context, transferQuery = [], base = "") {
+        super();
+        this[rootContext] = context;
         this[activeURI] = "";
         this[activeParams] = {};
         this[routes] = {};
@@ -203,6 +205,18 @@ export default class Router extends EventDispatcher {
             }
 
             let newConfig = [].concat(this[configToRoute][route], this[configToPage][pageName]);
+
+            newConfig.filter((con)=>con && !con.config).forEach((con) =>{
+                if(con.event){
+                    this[rootContext].dispatch(con.event, {
+                        page: pageName,
+                        path: route,
+                        routeDefaults: this[routes][route],
+                        params: params,
+                        query: this[query]
+                    });
+                }
+            });
             
             newConfig = newConfig.filter((con) => con && con.config?true:false);
 
@@ -265,7 +279,8 @@ export default class Router extends EventDispatcher {
                                 page: pageName,
                                 path: route,
                                 routeDefaults: this[routes][route],
-                                params: params
+                                params: params,
+                                query: this[query]
                             }); 
                         }, 0);
                         routeChangePromises.push(new Promise((resolve)=>{
@@ -375,6 +390,19 @@ export default class Router extends EventDispatcher {
         };
     }
 
+    mapEvent(eventName) {
+        return {
+            toPage(pageName) {
+                if(!self[configToPage][pageName]) self[configToPage][pageName] = [];
+                self[configToPage][pageName].push({event: eventName});
+            },
+            toRoute(route) {
+                if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                self[configToRoute][route].push({event: eventName});
+            }
+        }
+    }
+
     mapRoute(route, params){
         if(!params){
             params = {};
@@ -395,12 +423,20 @@ export default class Router extends EventDispatcher {
                     isNotFound() {
                         this[notFoundRoute] = route;
                         return self;
+                    },
+                    withEvent(eventName) {
+                        if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                        self[configToRoute][route].push({event: eventName});
                     }
                 }, self);
             },
             isNotFound() {
                 this[notFoundRoute] = route;
                 return self;
+            },
+            withEvent(eventName) {
+                if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                self[configToRoute][route].push({event: eventName});
             }
         }, this);
     }

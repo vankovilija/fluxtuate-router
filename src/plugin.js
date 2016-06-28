@@ -28,7 +28,7 @@ export default class RouterPlugin {
         if(this.context[routerContextSymbol]) return;
 
         if(!router) {
-            router = new Router(undefined, this.options.transferQuery, this.options.base);
+            router = new Router(this.context, this.options.transferQuery, this.options.base);
         }
 
         this.removeValue = removeValue;
