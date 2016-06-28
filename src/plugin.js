@@ -9,6 +9,9 @@ const routerContextSymbol = Symbol("fluxtuateRouter_routerContext");
 
 export default class RouterPlugin {
     @inject
+    eventDispatcher;
+
+    @inject
     contextDispatcher;
 
     @inject
@@ -68,6 +71,16 @@ export default class RouterPlugin {
                 Object.defineProperty(med, "route", {
                     get() {
                         return router.route;
+                    }
+                });
+
+                Object.defineProperty(med, "redirect", {
+                    get() {
+                        return (name, params, query)=>{
+                            this.eventDispatcher.dispatch("REDIRECT", {
+                                name, params, query
+                            });
+                        }
                     }
                 });
 
