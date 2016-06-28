@@ -62,6 +62,12 @@ export default class RouterPlugin {
                     }
                 });
 
+                Object.defineProperty(med, "query", {
+                    get() {
+                        return router.query;
+                    }
+                });
+
                 Object.defineProperty(med, "page", {
                     get() {
                         return router.page;
