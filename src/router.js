@@ -304,7 +304,8 @@ export default class Router extends EventDispatcher {
                     page: pageName,
                     path: route,
                     routeDefaults: this[routes][route],
-                    params: params
+                    params: params,
+                    query: this[query]
                 });
             });
 
