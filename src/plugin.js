@@ -80,10 +80,12 @@ export default class RouterPlugin {
                     }
                 });
 
+                let self = this;
+
                 Object.defineProperty(med, "redirect", {
                     get() {
                         return (name, params, query)=>{
-                            this.eventDispatcher.dispatch("REDIRECT", {
+                            self.eventDispatcher.dispatch("REDIRECT", {
                                 name, params, query
                             });
                         }
