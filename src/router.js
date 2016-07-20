@@ -239,13 +239,19 @@ export default class Router extends EventDispatcher {
                     context.dispatch(newConfig[index].event, routeProperties);
 
                     routeChangePromises.push(new Promise((resolve)=>{
-                        setTimeout(function(event){
-                            if(context.commandMap.hasEvent(event)) {
-                                context.commandMap.onComplete(resolve);
-                            }else{
+                        let configObject = newConfig[index];
+                        let completeListener = context.commandMap.addListener("complete", (ev, payload)=>{
+                            if(payload.event === configObject.event){
                                 resolve();
+                                completeListener.remove();
                             }
-                        }.bind(this, newConfig[index].event), 0);
+                        });
+                        setTimeout(function(event){
+                            if(!context.commandMap.hasEvent(event)) {
+                                resolve();
+                                completeListener.remove();
+                            }
+                        }.bind(this, configObject.event), 0);
                     }));
                 }
             }
@@ -275,11 +281,16 @@ export default class Router extends EventDispatcher {
                             newContext.dispatch(configObject.event, routeProperties);
                         }, 0);
                         routeChangePromises.push(new Promise((resolve)=>{
-                            setTimeout(function(event){
-                                if(newContext.commandMap.hasEvent(event)) {
-                                    newContext.commandMap.onComplete(resolve);
-                                }else{
+                            let completeListener = newContext.commandMap.addListener("complete", (ev, payload)=>{
+                                if(payload.event === configObject.event){
                                     resolve();
+                                    completeListener.remove();
+                                }
+                            });
+                            setTimeout(function(event){
+                                if(!newContext.commandMap.hasEvent(event)) {
+                                    resolve();
+                                    completeListener.remove();
                                 }
                             }.bind(this, configObject.event), 0);
                         }));
