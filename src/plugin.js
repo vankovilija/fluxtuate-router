@@ -1,13 +1,17 @@
 import {Context, inject} from "fluxtuate"
 import RetainDelegator from "fluxtuate/lib/delegator/retain-delegator"
-import Router from "./router"
+import Router from "./router_new"
 import RedirectCommand from "./redirect-command"
+import {ROUTE_CHANGED} from "./route-enums"
 
 let router;
 
 const routerContextSymbol = Symbol("fluxtuateRouter_routerContext");
 
 export default class RouterPlugin {
+    @inject
+    eventDispatcher;
+
     @inject
     contextDispatcher;
 
@@ -17,6 +21,12 @@ export default class RouterPlugin {
     @inject
     options;
 
+    @inject
+    location;
+
+    @inject
+    injector;
+
     mediators = [];
 
     rootContext;
@@ -25,20 +35,26 @@ export default class RouterPlugin {
         if(this.context[routerContextSymbol]) return;
 
         if(!router) {
-            router = new Router(undefined, this.options.transferQuery, this.options.base);
+            router = new Router(this.context, this.options.transferQuery, this.options.base);
+            this.injector.mapKey("location").toProperty(router, "location");
+        }else{
+            this.injector.mapKey("location").toValue(this.location);
         }
 
         this.removeValue = removeValue;
         injectValue("router", router, "Gets the router for the application", false, "command");
+      //  injectValue("location", this.pluginLocation, "Gets the location for the context", false, "command");
+
+
 
         this.medsDelegator = new RetainDelegator();
         this.previousRoute = undefined;
         this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
-            this.routeListener = router.addListener("route_changed", (eventName, payload)=> {
+            this.routeListener = router.addListener(ROUTE_CHANGED, (eventName, payload)=> {
                 setTimeout(()=> {
                     if (!this.medsDelegator) return;
 
-                    this.medsDelegator.dispatch("onNavStackChange", payload.params, payload.routeDefaults, this.previousRoute);
+                    this.medsDelegator.dispatch("onNavStackChange", payload);
                     this.previousRoute = {
                         params: payload.params,
                         routeDefaults: payload.routeDefaults
@@ -59,6 +75,12 @@ export default class RouterPlugin {
                     }
                 });
 
+                Object.defineProperty(med, "query", {
+                    get() {
+                        return router.query;
+                    }
+                });
+
                 Object.defineProperty(med, "page", {
                     get() {
                         return router.page;
@@ -68,6 +90,18 @@ export default class RouterPlugin {
                 Object.defineProperty(med, "route", {
                     get() {
                         return router.route;
+                    }
+                });
+
+                let self = this;
+
+                Object.defineProperty(med, "redirect", {
+                    get() {
+                        return (name, params, query)=>{
+                            self.eventDispatcher.dispatch("REDIRECT", {
+                                name, params, query
+                            });
+                        }
                     }
                 });
 
@@ -96,35 +130,35 @@ export default class RouterPlugin {
                 let routerContext;
                 let routerContextRoot;
 
-                router.addListener("route_context_updated", (eventName, payload) => {
-                    routerContext = payload.endingContext;
-                    if(routerContext) {
-                        if(!routerContextRoot || this.rootContext !== routerContextRoot.parent) {
-                            if(routerContextRoot && routerContextRoot.parent){
-                                routerContextRoot.parent.removeChild(routerContextRoot);
-                            }
-                            routerContextRoot = payload.startingContext;
-                            if(routerContextRoot.parent !== this.rootContext) {
-                                if(routerContextRoot.parent){
-                                    routerContextRoot.parent.removeChild(routerContextRoot);
-                                }
-                                this.rootContext.addChild(routerContextRoot);
-                            }
-                            if(this.context.parent !== routerContext) {
-                                if(this.context.parent){
-                                    this.context.parent.removeChild(this.context);
-                                }
-                                routerContext.addChild(this.context);
-                            }
-                        }
-                         routerContext.start();
-                    }else{
-                        if(routerContextRoot.parent){
-                            routerContextRoot.parent.removeChild(routerContextRoot);
-                        }
-                        routerContextRoot = null;
-                    } 
-                });
+                // router.addListener("route_context_updated", (eventName, payload) => {
+                //     routerContext = payload.endingContext;
+                //     if(routerContext) {
+                //         if(!routerContextRoot || this.rootContext !== routerContextRoot.parent) {
+                //             if(routerContextRoot && routerContextRoot.parent){
+                //                 routerContextRoot.parent.removeChild(routerContextRoot);
+                //             }
+                //             routerContextRoot = payload.startingContext;
+                //             if(routerContextRoot.parent !== this.rootContext) {
+                //                 if(routerContextRoot.parent){
+                //                     routerContextRoot.parent.removeChild(routerContextRoot);
+                //                 }
+                //                 this.rootContext.addChild(routerContextRoot);
+                //             }
+                //             if(this.context.parent !== routerContext) {
+                //                 if(this.context.parent){
+                //                     this.context.parent.removeChild(this.context);
+                //                 }
+                //                 routerContext.addChild(this.context);
+                //             }
+                //         }
+                //          routerContext.start();
+                //     }else{
+                //         if(routerContextRoot.parent){
+                //             routerContextRoot.parent.removeChild(routerContextRoot);
+                //         }
+                //         routerContextRoot = null;
+                //     }
+                // });
 
                 if(!router.started)
                     router.startRouter();

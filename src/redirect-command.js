@@ -5,9 +5,9 @@ export default class RedirectCommand extends Command {
     payload;
 
     @inject
-    router;
+    location;
 
     execute() {
-        this.router.goToPage(this.payload.name, this.payload.params, this.payload.query);
+        this.location.goToPage(this.payload.name, this.payload.params, this.payload.query);
     }
 }
