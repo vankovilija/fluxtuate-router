@@ -29,6 +29,7 @@ const routeContext = Symbol("fluxtuateRouter_routeContext");
 const routeConfig = Symbol("fluxtuateRouter_routeConfig");
 const query = Symbol("fluxtuateRouter_query");
 const baseURL = Symbol("fluxtuateRouter_base");
+const rootContext = Symbol("fluxtuateRouter_rootContext");
 
 const propsRegex = /{([^}]*)}|:([^:]*):/gi;
 
@@ -86,8 +87,9 @@ function processRoute(r, queryParams = {}) {
 
 @autobind
 export default class Router extends EventDispatcher {
-    constructor(parentRouter, transferQuery = [], base = "") {
-        super(parentRouter);
+    constructor(context, transferQuery = [], base = "") {
+        super();
+        this[rootContext] = context;
         this[activeURI] = "";
         this[activeParams] = {};
         this[routes] = {};
@@ -203,6 +205,20 @@ export default class Router extends EventDispatcher {
             }
 
             let newConfig = [].concat(this[configToRoute][route], this[configToPage][pageName]);
+
+            let routeProperties = {
+                page: pageName,
+                path: route,
+                routeDefaults: this[routes][route],
+                params: params,
+                query: this[query]
+            };
+
+            newConfig.filter((con)=>con && !con.config).forEach((con) =>{
+                if(con.event){
+                    this[rootContext].dispatch(con.event, routeProperties);
+                }
+            });
             
             newConfig = newConfig.filter((con) => con && con.config?true:false);
 
@@ -220,21 +236,22 @@ export default class Router extends EventDispatcher {
                 if(newConfig[index].event) {
                     let context = this[routeContext][rIndex];
 
-                    context.dispatch(newConfig[index].event, {
-                        page: pageName,
-                        path: route,
-                        routeDefaults: this[routes][route],
-                        params: params
-                    });
+                    context.dispatch(newConfig[index].event, routeProperties);
 
                     routeChangePromises.push(new Promise((resolve)=>{
-                        setTimeout(function(event){
-                            if(context.commandMap.hasEvent(event)) {
-                                context.commandMap.onComplete(resolve);
-                            }else{
+                        let configObject = newConfig[index];
+                        let completeListener = context.commandMap.addListener("complete", (ev, payload)=>{
+                            if(payload.event === configObject.event){
                                 resolve();
+                                completeListener.remove();
                             }
-                        }.bind(this, newConfig[index].event), 0);
+                        });
+                        setTimeout(function(event){
+                            if(!context.commandMap.hasEvent(event)) {
+                                resolve();
+                                completeListener.remove();
+                            }
+                        }.bind(this, configObject.event), 0);
                     }));
                 }
             }
@@ -261,19 +278,19 @@ export default class Router extends EventDispatcher {
                     newContext.config(configObject.config);
                     if(configObject.event){
                         setTimeout(()=>{
-                            newContext.dispatch(configObject.event, {
-                                page: pageName,
-                                path: route,
-                                routeDefaults: this[routes][route],
-                                params: params
-                            }); 
+                            newContext.dispatch(configObject.event, routeProperties);
                         }, 0);
                         routeChangePromises.push(new Promise((resolve)=>{
-                            setTimeout(function(event){
-                                if(newContext.commandMap.hasEvent(event)) {
-                                    newContext.commandMap.onComplete(resolve);
-                                }else{
+                            let completeListener = newContext.commandMap.addListener("complete", (ev, payload)=>{
+                                if(payload.event === configObject.event){
                                     resolve();
+                                    completeListener.remove();
+                                }
+                            });
+                            setTimeout(function(event){
+                                if(!newContext.commandMap.hasEvent(event)) {
+                                    resolve();
+                                    completeListener.remove();
                                 }
                             }.bind(this, configObject.event), 0);
                         }));
@@ -289,23 +306,14 @@ export default class Router extends EventDispatcher {
                         parent.addChild(newContext);
                     }
                 });
-                this.dispatch("route_context_updated", {
-                    page: pageName,
-                    path: route,
-                    routeDefaults: this[routes][route],
-                    params: params,
+                this.dispatch("route_context_updated", Object.assign({
                     startingContext: this.routeFirstContext,
                     endingContext: this.routeLastContext
-                });
+                }, routeProperties));
             }
 
             Promise.all(routeChangePromises).then(()=>{
-                this.dispatch("route_changed", {
-                    page: pageName,
-                    path: route,
-                    routeDefaults: this[routes][route],
-                    params: params
-                });
+                this.dispatch("route_changed", routeProperties);
             });
 
             this[activeRoute] = route;
@@ -374,6 +382,19 @@ export default class Router extends EventDispatcher {
         };
     }
 
+    mapEvent(eventName) {
+        return {
+            toPage(pageName) {
+                if(!self[configToPage][pageName]) self[configToPage][pageName] = [];
+                self[configToPage][pageName].push({event: eventName});
+            },
+            toRoute(route) {
+                if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                self[configToRoute][route].push({event: eventName});
+            }
+        }
+    }
+
     mapRoute(route, params){
         if(!params){
             params = {};
@@ -394,12 +415,20 @@ export default class Router extends EventDispatcher {
                     isNotFound() {
                         this[notFoundRoute] = route;
                         return self;
+                    },
+                    withEvent(eventName) {
+                        if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                        self[configToRoute][route].push({event: eventName});
                     }
                 }, self);
             },
             isNotFound() {
                 this[notFoundRoute] = route;
                 return self;
+            },
+            withEvent(eventName) {
+                if(!self[configToRoute][route]) self[configToRoute][route] = [];
+                self[configToRoute][route].push({event: eventName});
             }
         }, this);
     }
