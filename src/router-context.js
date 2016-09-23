@@ -1,7 +1,7 @@
 import {findIndex} from "lodash/array"
-import {isString} from "lodash/lang"
+import {isString, isFunction} from "lodash/lang"
 import CrossRoads from "crossroads"
-import {getPath, propsRegex, createPart} from "./_internals"
+import {propsRegex, createPart} from "./_internals"
 import RoutePart from "./route-part"
 import Promise from "bluebird"
 
@@ -20,6 +20,20 @@ const loadRoute = Symbol("fluxtuateRouter_loadRoute");
 //match any context
 const contextRegex = /<[^>]*>/gi;
 
+function addConfigurationToRoute(route, Config) {
+    if(!route.configurations) route.configurations = [];
+    route.configurations.push(Config);
+
+    return this;
+}
+
+function addEventToRoute(route, eventName) {
+    if(!route.events) route.events = [];
+    route.events.push(eventName);
+
+    return this;
+}
+
 export default class RouterContext {
     constructor(contextName, containerRouter) {
         this[parser] = CrossRoads.create();
@@ -31,7 +45,7 @@ export default class RouterContext {
         this[routeChangeResolve] = null;
         this[calculatedRoutes] = [];
 
-        this[createPart] = ({pageName, path, routeDefaults, contexts}, params) => {
+        this[createPart] = ({pageName, path, routeDefaults, contexts, configurations, events}, params) => {
             let routeProperties = {
                 page: pageName,
                 path: path,
@@ -41,6 +55,10 @@ export default class RouterContext {
 
             let allContexts = Object.keys(contexts);
 
+            //this.store.addModel("consultantModel", ConsultantModel);
+            //browserRoute = "consultant1/3/consultant2/5" path="consultant1/<con1:consultant-context>/consultant2/<con2:consultant-context>"
+            //browserRoute = "consultant1/3" path="consultant1/<con1:consultant-context>"
+            //consultant-context: {"/{id}": {pageName: "overview"}, "/{id}/schedule/{date}": {pageName: "schedule"}}
             allContexts.forEach((key)=>{
                 if(routeProperties.params[`context@${key}`]) {
                     delete routeProperties.params[`context@${key}`];
@@ -50,9 +68,10 @@ export default class RouterContext {
                 }
             });
 
-            return new RoutePart(routeProperties, allContexts, this);
+            return new RoutePart(routeProperties, allContexts, configurations, events, this);
         };
 
+        //path = "consultant/{id}"  browserRoute="consultant/3"  route={path: "consultant/{id}", pageName: "consultant", routeDefaults...}  resolveRoute = function...  params={id: 3}
         this[loadRoute] = (route, resolveRoute, params) => {
             for(let key in params){
                 if(params.hasOwnProperty(key)) {
@@ -65,51 +84,6 @@ export default class RouterContext {
             }
 
             resolveRoute(this[createPart](route, params));
-        };
-
-        this[getPath] = (route, params) => {
-            let allContexts = Object.keys(route.contexts);
-
-            let currentPath = [route.path];
-
-            allContexts.forEach((contextName)=>{
-                let contextObject = route.contexts[contextName];
-                for(let i = 0; i < currentPath.length; i++) {
-                    if(isString(currentPath[i])){
-                        let contextSplit = currentPath[i].split(contextObject.contextProp);
-                        if(contextSplit.length > 1) {
-                            let route = params[contextName].route;
-                            if(!route) {
-                                if(params[contextName].path)
-                                    route = contextObject.context[getPathRoute](params[contextName].path);
-                                else
-                                    route = contextObject.context[getPageRoute](params[contextName].page);
-
-                                if(!route) {
-                                    route = contextObject.context[routes][0];
-                                }
-                            }
-                            let routePart = contextObject.context[getPath](route, params[contextName].params, params[contextName].contexts);
-                            contextSplit.splice(1, 0, routePart);
-                            currentPath.splice.apply(currentPath, [i, 1, ...contextSplit])
-                        }
-                    }
-                }
-            });
-
-            let props = Object.keys(route.props);
-
-            props.forEach((prop)=>{
-                let propPath = props[prop];
-                if (params.hasOwnProperty(prop) && params[prop] !== undefined && params[prop] !== null) {
-                    currentPath = currentPath.replace(propPath, params[prop]);
-                } else {
-                    currentPath = currentPath.replace(propPath + "/", "");
-                    currentPath = currentPath.replace(propPath, "");
-                }
-            });
-
-            return new RoutePart(currentPath, this);
         };
 
         this[getPathRoute] = (routePath)=>{
@@ -136,6 +110,7 @@ export default class RouterContext {
             let contextMatch;
             let newRoute = {contexts: {}, props: {}};
 
+            //<consultant-context>/<con2:consultant-context>
             let currentPath = path;
             while ((contextMatch = contextRegex.exec(path)) !== null) {
                 let contextName = contextMatch[1].split(":");
@@ -169,6 +144,80 @@ export default class RouterContext {
         this[name] = contextName;
     }
 
+    mapConfig(Config) {
+        if(!Config){
+            throw new Error("You must provide a configuration class to do this mapping!");
+        }
+
+        if(!isFunction(Config.prototype.configure)){
+            throw new Error("Configuration must contain a configure method!");
+        }
+
+        let self = this;
+        return {
+            toPath (path) {
+                if(!path) throw new Error("You must provide a path to map a config!");
+                let route = self[getPageRoute](path);
+                if(route === self[notFoundRoute]) {
+                    throw new Error(`No such path ${path}`)
+                }
+                addConfigurationToRoute(route, Config);
+                return {
+                    withEvent: addEventToRoute.bind(undefined, route)
+                }
+            },
+            toPage (pageName) {
+                if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
+                let route = self[getPageRoute](pageName);
+                if(route === self[notFoundRoute]) {
+                    throw new Error(`No such page ${pageName}`)
+                }
+                if(!route.configurations) route.configurations = [];
+                route.configurations.push(Config);
+                return {
+                    withEvent: addEventToRoute.bind(undefined, route)
+                }
+            }
+        };
+    }
+
+    mapEvent(eventName) {
+        if(!eventName){
+            throw new Error("You must provide a event name to do this mapping!");
+        }
+
+        if(!isString(eventName)){
+            throw new Error(`Event name must be a string! ${eventName}`);
+        }
+
+        let self = this;
+        return {
+            toPath (path) {
+                if(!path) throw new Error("You must provide a path to map a event!");
+                let route = self[getPageRoute](path);
+                if(route === self[notFoundRoute]) {
+                    throw new Error(`No such path ${path}`)
+                }
+                addEventToRoute(route, eventName);
+                return {
+                    withConfiguration: addConfigurationToRoute.bind(undefined, route)
+                }
+            },
+            toPage (pageName) {
+                if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
+                let route = self[getPageRoute](pageName);
+                if(route === self[notFoundRoute]) {
+                    throw new Error(`No such page ${pageName}`)
+                }
+                addEventToRoute(route, eventName);
+                return {
+                    withConfiguration: addConfigurationToRoute.bind(undefined, route)
+                }
+            }
+        }
+    }
+
+    //path = "/customer/{id}"  routeDefault={title: "customer"}
     mapRoute(path, routeDefaults) {
         let routeObject = this[formRoute](path);
         routeObject = Object.assign({routeDefaults}, routeObject);
@@ -179,6 +228,15 @@ export default class RouterContext {
         return {
             toPage(pageName) {
                 routeObject.pageName = pageName;
+
+                return {
+                    withConfiguration: addConfigurationToRoute.bind({
+                        withEvent: addEventToRoute.bind(undefined, routeObject)
+                    }, routeObject),
+                    withEvent: addEventToRoute.bind({
+                        withConfiguration: addConfigurationToRoute.bind(undefined, routeDefaults)
+                    }, routeObject)
+                }
             }
         }
     }

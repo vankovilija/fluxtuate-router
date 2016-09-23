@@ -1,3 +1,5 @@
+import {inject} from "fluxtuate"
+
 export default function (location) {
     return class Config  {
         @inject

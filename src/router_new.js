@@ -87,7 +87,9 @@ export default class Router extends EventDispatcher{
                         this[rootPart] = part;
                         part.addListener(ROUTE_CHANGE, this[routeChanged])
                     }
-                    this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
+                    this[rootPart].start().then(()=>{
+                        this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
+                    });
                 });
             this[activeURI] = uri;
         };
@@ -105,6 +107,10 @@ export default class Router extends EventDispatcher{
         return this[contexts].root.mapRoute(route, routeParams);
     }
 
+    mapConfig(Config) {
+        return this[contexts].root.mapConfig(Config);
+    }
+
     goToRoute(route, query = {}){
         let defQuery = {};
         this[transferQuery].forEach((qN)=>{
@@ -115,9 +121,8 @@ export default class Router extends EventDispatcher{
         route = processRoute(route, Object.assign({}, query, defQuery));
 
         route = this[baseURL] + route;
-        setTimeout(()=>{
-            History.pushState(undefined, document.title, route);
-        }, 0);
+
+        History.pushState(undefined, document.title, route);
     }
 
     startRouter() {

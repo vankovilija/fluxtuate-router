@@ -24,9 +24,6 @@ export default class RouterPlugin {
     @inject
     location;
 
-    @inject
-    injector;
-
     mediators = [];
 
     rootContext;
@@ -36,19 +33,17 @@ export default class RouterPlugin {
 
         if(!router) {
             router = new Router(this.context, this.options.transferQuery, this.options.base);
-            this.injector.mapKey("location").toProperty(router, "location");
+            injectValue("location", this.location, "Gets the location for the application", false, "command");
         }else{
-            this.injector.mapKey("location").toValue(this.location);
+            injectValue("location", this.location, "Gets the location for the application", false, "command");
         }
 
         this.removeValue = removeValue;
         injectValue("router", router, "Gets the router for the application", false, "command");
-      //  injectValue("location", this.pluginLocation, "Gets the location for the context", false, "command");
 
 
 
         this.medsDelegator = new RetainDelegator();
-        this.previousRoute = undefined;
         this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
             this.routeListener = router.addListener(ROUTE_CHANGED, (eventName, payload)=> {
                 setTimeout(()=> {
