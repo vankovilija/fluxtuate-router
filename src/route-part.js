@@ -2,11 +2,12 @@ import {Context} from "fluxtuate"
 import Config from "./route-config"
 import EventDispatcher from "fluxtuate/lib/event-dispatcher"
 import {setRouteProperties, propsRegex} from "./_internals"
-import {ROUTE_CHANGE, ROUTE_CONTEXT_UPDATED} from "./route-enums"
+import {ROUTE_CHANGE, ROUTE_CONTEXT_UPDATED, ROUTE_CHANGED} from "./route-enums"
 import {difference} from "lodash/array"
 import {destroy} from "fluxtuate/lib/event-dispatcher/_internals"
 
 const currentRoute = Symbol("fluxtuateRouter_currentRoute");
+const routeUpdated = Symbol("fluxtuateRouter_routeUpdated");
 const routeParts = Symbol("fluxtuateRouter_routeParts");
 const contextRoute = Symbol("fluxtuateRouter_contextRoute");
 const fluxtuateContextRoute = Symbol("fluxtuateRouter_fluxtuateContextRoute");
@@ -26,6 +27,7 @@ export default class RoutePart extends EventDispatcher {
         this[contextsRoute] = [];
         this[configurationsRoute] = [];
         this[fluxtuateContextRoute] = [];
+        this[routeUpdated] = false;
         this[routeParts] = {};
         this[currentRoute] = {};
         this[contextRoute] = context;
@@ -48,24 +50,34 @@ export default class RoutePart extends EventDispatcher {
                 this[partListeners].pop().remove();
             }
 
-            let propertiesKeys = Object.keys(routeProperties);
+            let newPrams = routeProperties.params;
+            let oldParams = this[contextRoute].params;
+
+            let newParamsKeys = Object.keys(newPrams);
 
             this[contextsRoute].forEach((contextProp)=> {
                 let contextPart = this[currentRoute].params[contextProp];
-                let propIndex = propertiesKeys.indexOf(contextProp);
-                let shouldDestroy = true;
-                if (propIndex !== -1) {
-                    if (contextPart[contextRoute] === routeProperties[contextProp][contextRoute]) {
-                        contextPart[contextRoute][setRouteProperties](routeProperties[contextProp][contextRoute]);
-                        propertiesKeys.splice(propIndex, 1);
-                        shouldDestroy = false;
-                    }
-                }
-                if (shouldDestroy)
+                let propIndex = newParamsKeys.indexOf(contextProp);
+                if (propIndex !== -1 && contextPart[contextRoute] === newPrams[contextProp][contextRoute]) {
+                    contextPart[contextRoute][setRouteProperties](routeProperties[contextProp][contextRoute]);
+                    newParamsKeys.splice(propIndex, 1);
+                }else
                     contextPart[destroy]();
             });
-            propertiesKeys.forEach((propKey)=> {
-                this[currentRoute][propKey] = routeProperties[propKey];
+
+            this[routeUpdated] = this[currentRoute].page !== routeProperties.page || this[currentRoute].path !== routeProperties.path;
+
+            newParamsKeys.forEach((propKey)=> {
+                if(oldParams[propKey] !== newPrams[propKey]) {
+                    oldParams[propKey] = newPrams[propKey];
+                    this[routeUpdated] = true;
+                }
+            });
+
+            Object.keys(routeProperties).forEach((routeKey)=>{
+                if(routeKey !== "params") {
+                    this[contextRoute][routeKey] = routeProperties[routeKey];
+                }
             });
             this[contextsRoute] = contexts;
             this[routeParts] = {};
@@ -159,9 +171,10 @@ export default class RoutePart extends EventDispatcher {
         }));
 
         return Promise.all(routeChangePromises).then(()=>{
-            Object.keys(this[routeParts]).forEach((key)=>{
-                this.endingContext.addChild(this[routeParts][key].startingContext);
-            });
+            if(this[routeUpdated]) {
+                this.dispatch(ROUTE_CHANGED, this);
+                this[routeUpdated] = false;
+            }
         });
     }
 
