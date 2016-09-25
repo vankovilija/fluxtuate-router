@@ -60,6 +60,7 @@ export default class RoutePart extends EventDispatcher {
                 let propIndex = newParamsKeys.indexOf(contextProp);
                 if (propIndex !== -1 && contextPart[contextRoute] === newPrams[contextProp][contextRoute]) {
                     contextPart[setRouteProperties](newPrams[contextProp]);
+                    newPrams[contextProp] = contextPart;
                     newParamsKeys.splice(propIndex, 1);
                 }else
                     contextPart[destroy]();
@@ -69,12 +70,11 @@ export default class RoutePart extends EventDispatcher {
 
             newParamsKeys.forEach((propKey)=> {
                 if(oldParams[propKey] !== newPrams[propKey]) {
-                    oldParams[propKey] = newPrams[propKey];
                     this[routeUpdated] = true;
                 }
             });
 
-            this[currentRoute].params = oldParams;
+            this[currentRoute].params = newPrams;
 
             Object.keys(routeProperties).forEach((routeKey)=>{
                 if(routeKey !== "params") {
