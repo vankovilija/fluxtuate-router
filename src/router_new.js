@@ -56,6 +56,7 @@ export default class Router extends EventDispatcher{
 
         let rootContext = new RouterContext("root");
         this[contexts] = {root: rootContext};
+        this[rootPart] = rootContext.resolvePath("/404");
 
         this[baseURL] = base;
         this[transferQuery] = routerTransferQuery;
@@ -64,6 +65,8 @@ export default class Router extends EventDispatcher{
         this[routeChanged] = () => {
             this.goToRoute(this[rootPart].toString());
         };
+
+        this[rootPart].addListener(ROUTE_CHANGE, this[routeChanged]);
 
         this[calculateURIState] = () => {
             var State = History.getState();
@@ -81,12 +84,8 @@ export default class Router extends EventDispatcher{
             uri = uri.replace(this[baseURL], "");
             if(this[activeURI] !== uri)
                 rootContext.parse(uri).then((part)=>{
-                    if(this[rootPart]) {
-                        this[rootPart][setRouteProperties](part);
-                    }else{
-                        this[rootPart] = part;
-                        part.addListener(ROUTE_CHANGE, this[routeChanged])
-                    }
+                    this[rootPart][setRouteProperties](part);
+
                     this[rootPart].start().then(()=>{
                         this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
                     });

@@ -33,9 +33,9 @@ export default class RouterPlugin {
 
         if(!router) {
             router = new Router(this.context, this.options.transferQuery, this.options.base);
-            injectValue("location", this.location, "Gets the location for the application", false, "command");
+            injectValue("location", router.location, "Gets the location for the application", false);
         }else{
-            injectValue("location", this.location, "Gets the location for the application", false, "command");
+            injectValue("location", this.location, "Gets the location for the application", false);
         }
 
         this.removeValue = removeValue;
@@ -113,7 +113,7 @@ export default class RouterPlugin {
                 this.medsDelegator.detachDelegate(payload.mediator);
             });
         });
-        
+
         this.appStartingListener = this.contextDispatcher.addListener("starting", ()=>{
             if(!this.context.parent){
                 this.context.commandMap.mapEvent("REDIRECT").toCommand(RedirectCommand);
@@ -122,8 +122,6 @@ export default class RouterPlugin {
                 this.context[routerContextSymbol] = true;
                 this.rootContext.plugin(RouterPlugin);
                 this.rootContext.addChild(this.context);
-                let routerContext;
-                let routerContextRoot;
 
                 // router.addListener("route_context_updated", (eventName, payload) => {
                 //     routerContext = payload.endingContext;
@@ -207,6 +205,7 @@ export default class RouterPlugin {
         
         if(this.removeValue) {
             this.removeValue("router");
+            this.removeValue("location");
         }
     }
 }

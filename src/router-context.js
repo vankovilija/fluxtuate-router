@@ -44,6 +44,11 @@ export default class RouterContext {
         this[routes] = [];
         this[routeChangeResolve] = null;
         this[calculatedRoutes] = [];
+        this[notFoundRoute] = {
+            path: "/404",
+            routeDefaults: {},
+            contexts: {}
+        };
 
         this[createPart] = ({pageName, path, routeDefaults, contexts, configurations, events}, params) => {
             let routeProperties = {
