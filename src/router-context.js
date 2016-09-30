@@ -1,7 +1,7 @@
 import {findIndex} from "lodash/array"
 import {isString, isFunction} from "lodash/lang"
 import CrossRoads from "crossroads"
-import {propsRegex, createPart} from "./_internals"
+import {propsRegex, createPart, setRouteProperties} from "./_internals"
 import RoutePart from "./route-part"
 import Promise from "bluebird"
 
@@ -16,9 +16,27 @@ const getPathRoute = Symbol("fluxtuateRouter_getRoutePath");
 const notFoundRoute = Symbol("fluxtuateRouter_notFoundRoute");
 const routeChangeResolve = Symbol("fluxtuateRouter_routeChangeResolve");
 const loadRoute = Symbol("fluxtuateRouter_loadRoute");
+const activePromises = Symbol("fluxtuateRouter_activePromises");
 
 //match any context
-const contextRegex = /<[^>]*>/gi;
+const contextRegex = /<([^>]*)>/gi;
+
+function processRoute(route){
+    let r = route;
+    if(r === "") r = "/";
+    //if the first char is not slash - add slash
+    if(r[0] !== "/") {
+        r = "/" + r;
+    }
+    //if the route is just slash that means root and don't remove the last slash
+    if (!(r && r.length == 1 && r === "/")) {
+        //if the last char is slash - remove it
+        if (r[r.length - 1] === "/") {
+            r = r.slice(0, r.length - 1);
+        }
+    }
+    return r;
+}
 
 function addConfigurationToRoute(route, Config) {
     if(!route.configurations) route.configurations = [];
@@ -34,6 +52,8 @@ function addEventToRoute(route, eventName) {
     return this;
 }
 
+const resolvedPromise = new Promise((resolve)=>resolve());
+
 export default class RouterContext {
     constructor(contextName, containerRouter) {
         this[parser] = CrossRoads.create();
@@ -44,6 +64,8 @@ export default class RouterContext {
         this[routes] = [];
         this[routeChangeResolve] = null;
         this[calculatedRoutes] = [];
+        this[activePromises] = {};
+
         this[notFoundRoute] = {
             path: "/404",
             routeDefaults: {},
@@ -60,24 +82,28 @@ export default class RouterContext {
 
             let allContexts = Object.keys(contexts);
 
-            //this.store.addModel("consultantModel", ConsultantModel);
-            //browserRoute = "consultant1/3/consultant2/5" path="consultant1/<con1:consultant-context>/consultant2/<con2:consultant-context>"
-            //browserRoute = "consultant1/3" path="consultant1/<con1:consultant-context>"
-            //consultant-context: {"/{id}": {pageName: "overview"}, "/{id}/schedule/{date}": {pageName: "schedule"}}
+            let allContextPromises = [resolvedPromise];
+
             allContexts.forEach((key)=>{
-                if(routeProperties.params[`context@${key}`]) {
-                    delete routeProperties.params[`context@${key}`];
-                    contexts[key].context.parse(params[`context@${key}`]).then((routePart)=> {
-                        routeProperties.params[key] = routePart;
-                    });
+                let prop = `context@${key}*`;
+                let contextRoute = routeProperties.params[prop];
+                if(contextRoute) {
+                    delete routeProperties.params[prop];
+                }else{
+                    contextRoute = "";
                 }
+                routeProperties.params[key] = contexts[key].context.generatePart();
+                allContextPromises.push(contexts[key].context.parse(contextRoute).then((routePart)=> {
+                    routeProperties.params[key][setRouteProperties](routePart);
+                    return true;
+                }));
             });
 
-            return new RoutePart(routeProperties, allContexts, configurations, events, this);
+            return Promise.all(allContextPromises).then(()=>new RoutePart(routeProperties, allContexts, configurations, events, this));
         };
 
         //path = "consultant/{id}"  browserRoute="consultant/3"  route={path: "consultant/{id}", pageName: "consultant", routeDefaults...}  resolveRoute = function...  params={id: 3}
-        this[loadRoute] = (route, resolveRoute, params) => {
+        this[loadRoute] = (route, resolveRoute, routeName, params) => {
             for(let key in params){
                 if(params.hasOwnProperty(key)) {
                     let param = params[key];
@@ -88,7 +114,10 @@ export default class RouterContext {
                 }
             }
 
-            resolveRoute(this[createPart](route, params));
+            this[activePromises][routeName] = undefined;
+            this[createPart](route, params).then((part)=>{
+                resolveRoute(part);
+            });
         };
 
         this[getPathRoute] = (routePath)=>{
@@ -126,7 +155,7 @@ export default class RouterContext {
                 let context = this[router].contexts[contextType];
                 if(!context) throw new Error(`No context found with the name: ${contextType} in context ${this[name]}!`);
 
-                let contextProp = "{context@" + contextName + "*}";
+                let contextProp = ":context@" + contextName + "*:";
                 currentPath = currentPath.replace(routeString, contextProp);
                 newRoute.contexts[contextName] = {context, contextProp};
             }
@@ -147,6 +176,17 @@ export default class RouterContext {
         };
 
         this[name] = contextName;
+    }
+
+    generatePart() {
+        let routeProperties = {
+            page: "",
+            path: "/404",
+            routeDefaults: {},
+            params: {}
+        };
+
+        return new RoutePart(routeProperties, [], [], [], this)
     }
 
     mapConfig(Config) {
@@ -255,8 +295,13 @@ export default class RouterContext {
     }
 
     parse(route) {
-        return new Promise((resolve)=>{
-            this[parser].parse(route, [resolve]);
-        });
+        route = processRoute(route);
+        if(!this[activePromises][route]) {
+            this[activePromises][route] = new Promise((resolve)=> {
+                this[parser].parse(route, [resolve, route]);
+            });
+        }
+
+        return this[activePromises][route];
     }
 }

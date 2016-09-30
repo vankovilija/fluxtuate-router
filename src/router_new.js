@@ -11,41 +11,29 @@ const contexts = Symbol("fluxtuateRouter_contexts");
 const baseURL = Symbol("fluxtuateRouter_base");
 const transferQuery = Symbol("fluxtuateRouter_transferQuery");
 const rootPart = Symbol("fluxtuateRouter_rootPart");
+const locationCallbacks = Symbol("fluxtuateRouter_locationCallbacks");
 const routeChanged = Symbol("fluxtuateRouter_routeChanged");
 const calculateURIState = Symbol("fluxtuateRouter_calculateURIState");
 const rootFluxtuateContext = Symbol("fluxtuateRouter_rootFluxtuateContext");
 const query = Symbol("fluxtuateRouter_query");
 
-function processRoute(r, queryParams = {}) {
-    let route = r;
-    //if the first char is not slash - add slash
-    if(route[0] !== "/") {
-        route = "/" + route;
-    }
-    //if the route is just slash that means root and don't remove the last slash
-    if (!(route && route.length == 1 && route === "/")) {
-        //if the last char is slash - remove it
-        if (route[route.length - 1] === "/") {
-            route = route.slice(0, route.length - 1);
-        }
-    }
-
-
+function processQuery(route, queryParams = {}) {
+    let r = route;
     let count = 0;
     for (let key in queryParams) {
 
         if(count > 0) {
-            route += "&";
+            r += "&";
         }else{
-            route += "?";
+            r += "?";
         }
 
-        route += `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`;
+        r += `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`;
 
         count ++;
     }
 
-    return route;
+    return r;
 }
 
 @autobind
@@ -53,20 +41,26 @@ export default class Router extends EventDispatcher{
     constructor(context, routerTransferQuery = [], base = "") {
         super();
         this[started] = false;
+        this[locationCallbacks] = [];
 
-        let rootContext = new RouterContext("root");
+        let rootContext = new RouterContext("root", this);
         this[contexts] = {root: rootContext};
-        this[rootPart] = rootContext.resolvePath("/404");
 
-        this[baseURL] = base;
-        this[transferQuery] = routerTransferQuery;
-        this[rootFluxtuateContext] = context;
+        this[rootPart] = rootContext.generatePart();
 
         this[routeChanged] = () => {
             this.goToRoute(this[rootPart].toString());
         };
 
         this[rootPart].addListener(ROUTE_CHANGE, this[routeChanged]);
+
+        while(this[locationCallbacks].length > 0) {
+            this[locationCallbacks].pop()(this[rootPart]);
+        }
+
+        this[baseURL] = base;
+        this[transferQuery] = routerTransferQuery;
+        this[rootFluxtuateContext] = context;
 
         this[calculateURIState] = () => {
             var State = History.getState();
@@ -98,7 +92,7 @@ export default class Router extends EventDispatcher{
         if(this[contexts].hasOwnProperty(contextName)) {
             throw new Error(`You already have created a context with the ${contextName} name, context names must be unique!`)
         }
-        this[contexts][contextName] = new RouterContext(contextName);
+        this[contexts][contextName] = new RouterContext(contextName, this);
         return this[contexts][contextName];
     }
 
@@ -117,7 +111,7 @@ export default class Router extends EventDispatcher{
                 defQuery[qN] = this.query[qN];
         });
 
-        route = processRoute(route, Object.assign({}, query, defQuery));
+        route = processQuery(route, Object.assign({}, query, defQuery));
 
         route = this[baseURL] + route;
 

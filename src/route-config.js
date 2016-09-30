@@ -6,7 +6,8 @@ export default function (location) {
         injector;
 
         configure() {
-            this.injector.inject("location", location);
+            if(!this.injector.hasInjection("location"))
+                this.injector.mapKey("location").toValue(location);
         }
     }
 }

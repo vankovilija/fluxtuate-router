@@ -1,10 +1,11 @@
 import {Context} from "fluxtuate"
 import Config from "./route-config"
 import EventDispatcher from "fluxtuate/lib/event-dispatcher"
-import {setRouteProperties, propsRegex} from "./_internals"
+import {setRouteProperties, propsRegex, routeContext} from "./_internals"
 import {ROUTE_CHANGE, ROUTE_CONTEXT_UPDATED, ROUTE_CHANGED} from "./route-enums"
 import {difference} from "lodash/array"
 import {destroy} from "fluxtuate/lib/event-dispatcher/_internals"
+import {autobind} from "core-decorators"
 
 const currentRoute = Symbol("fluxtuateRouter_currentRoute");
 const routeUpdated = Symbol("fluxtuateRouter_routeUpdated");
@@ -16,10 +17,15 @@ const newConfigurationsRoute = Symbol("fluxtuateRouter_newConfigurationsRoute");
 const eventsRoute = Symbol("fluxtuateRouter_eventsRoute");
 const contextsRoute = Symbol("fluxtuateRouter_contextsRoute");
 const requestUpdate = Symbol("fluxtuateRouter_requestUpdate");
+const dispatchUpdate = Symbol("fluxtuateRouter_dispatchUpdate");
 const partListeners = Symbol("fluxtuateRouter_partListeners");
 const fluxtuateRouterContext = Symbol("fluxtuateRouter_context");
 const fluxtuateRouterContextTail = Symbol("fluxtuateRouter_contextTail");
 
+const contextPrepend = new RegExp("\\/:context@", "g");
+const contextSuffix = new RegExp("\\*:", "g");
+
+@autobind
 export default class RoutePart extends EventDispatcher {
     constructor (routeProperties = {}, contexts = [], configurations = [], events = [], context = {}) {
         super();
@@ -31,13 +37,13 @@ export default class RoutePart extends EventDispatcher {
         this[routeParts] = {};
         this[currentRoute] = {};
         this[contextRoute] = context;
+
         this[fluxtuateRouterContext] = new Context().config(Config(this));
+        this[fluxtuateRouterContext][routeContext] = true;
         //...all other contexts with configurations
         this[fluxtuateRouterContextTail] = new Context();
 
         this[fluxtuateRouterContext].addChild(this[fluxtuateRouterContextTail]);
-
-        this[fluxtuateRouterContextTail].start();
 
         this[setRouteProperties] = (routeProperties, contexts, configurations, events) => {
             if (routeProperties[currentRoute]) {
@@ -66,7 +72,9 @@ export default class RoutePart extends EventDispatcher {
                     contextPart[destroy]();
             });
 
-            this[routeUpdated] = this[currentRoute].page !== routeProperties.page || this[currentRoute].path !== routeProperties.path;
+            if(this[currentRoute].page !== routeProperties.page || this[currentRoute].path !== routeProperties.path){
+                this[routeUpdated] = true;
+            }
 
             newParamsKeys.forEach((propKey)=> {
                 if(oldParams[propKey] !== newPrams[propKey]) {
@@ -84,8 +92,9 @@ export default class RoutePart extends EventDispatcher {
             this[contextsRoute] = contexts;
             this[routeParts] = {};
             this[contextsRoute].forEach((contextProp)=> {
-                this[partListeners].push(this[contextsRoute].params[contextProp].addEventListener(ROUTE_CHANGE, this[requestUpdate]));
-                this[routeParts][contextProp] = this[contextsRoute].params[contextProp];
+                this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_CHANGED, this[dispatchUpdate]));
+                this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_CHANGE, this[requestUpdate]));
+                this[routeParts][contextProp] = this[currentRoute].params[contextProp];
             });
 
             this[eventsRoute] = events;
@@ -97,10 +106,17 @@ export default class RoutePart extends EventDispatcher {
             this.dispatch(ROUTE_CHANGE, this);
         };
 
+        this[dispatchUpdate] = () => {
+            this.dispatch(ROUTE_CHANGED, this.currentRoute);
+        };
+
         this[setRouteProperties](routeProperties, contexts, configurations, events);
     }
 
     start() {
+
+        this[fluxtuateRouterContextTail].start();
+
         let routeChangePromises = Object.keys(this[routeParts]).map((key)=>this[routeParts][key].start());
 
         let addingDifference = difference(this[newConfigurationsRoute], this[configurationsRoute]);
@@ -174,18 +190,18 @@ export default class RoutePart extends EventDispatcher {
 
         return Promise.all(routeChangePromises).then(()=>{
             if(this[routeUpdated]) {
-                this.dispatch(ROUTE_CHANGED, this);
+                this[dispatchUpdate]();
                 this[routeUpdated] = false;
             }
         });
     }
 
     goToPage (pageName, params) {
-        this.goToRoute(this[contextRoute].resolvePage(pageName, params));
+        this[contextRoute].resolvePage(pageName, params).then(this.goToRoute);
     }
 
     goToPath (pagePath, params) {
-        this.goToRoute(this[contextRoute].resolvePath(pagePath, params));
+        this[contextRoute].resolvePath(pagePath, params).then(this.goToRoute);
     }
 
     goToRoute (route) {
@@ -222,13 +238,18 @@ export default class RoutePart extends EventDispatcher {
         });
 
         let pagePath = this[currentRoute].path;
+        pagePath = pagePath.replace(contextPrepend, "/:");
+        pagePath = pagePath.replace(contextSuffix, ":");
 
         let checkPath = pagePath;
         let pageMatch;
         while ((pageMatch = propsRegex.exec(checkPath)) !== null) {
             var matchValue = pageMatch[1] || pageMatch[2];
-            if (params.hasOwnProperty(matchValue) && params[matchValue] !== undefined && params[matchValue] !== null) {
-                pagePath = pagePath.replace(pageMatch[0], params[matchValue]);
+            if (params.hasOwnProperty(matchValue) && params[matchValue] !== undefined && params[matchValue] !== null && params[matchValue] !== "/") {
+                let match = params[matchValue];
+                if(match[0] === "/") match = match.slice(1);
+                if(match[match.length - 1] === "/") match = match.slice(0, -1);
+                pagePath = pagePath.replace(pageMatch[0], match);
             } else {
                 pagePath = pagePath.replace(pageMatch[0] + "/", "");
                 pagePath = pagePath.replace(pageMatch[0], "");
