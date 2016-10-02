@@ -16,7 +16,6 @@ const getPathRoute = Symbol("fluxtuateRouter_getRoutePath");
 const notFoundRoute = Symbol("fluxtuateRouter_notFoundRoute");
 const routeChangeResolve = Symbol("fluxtuateRouter_routeChangeResolve");
 const loadRoute = Symbol("fluxtuateRouter_loadRoute");
-const activePromises = Symbol("fluxtuateRouter_activePromises");
 
 //match any context
 const contextRegex = /<([^>]*)>/gi;
@@ -58,13 +57,13 @@ export default class RouterContext {
     constructor(contextName, containerRouter) {
         this[parser] = CrossRoads.create();
         this[parser].greedyEnabled = false;
+        this[parser].ignoreState = true;
         this[parser].normalizeFn = CrossRoads.NORM_AS_OBJECT;
         this[parser].shouldTypecast = true;
         this[router] = containerRouter;
         this[routes] = [];
         this[routeChangeResolve] = null;
         this[calculatedRoutes] = [];
-        this[activePromises] = {};
 
         this[notFoundRoute] = {
             path: "/404",
@@ -93,10 +92,26 @@ export default class RouterContext {
                     contextRoute = "";
                 }
                 routeProperties.params[key] = contexts[key].context.generatePart();
-                allContextPromises.push(contexts[key].context.parse(contextRoute).then((routePart)=> {
-                    routeProperties.params[key][setRouteProperties](routePart);
-                    return true;
-                }));
+                if(isString(contextRoute)){
+                    allContextPromises.push(contexts[key].context.parse(contextRoute).then((routePart)=> {
+                        routeProperties.params[key][setRouteProperties](routePart);
+                        return true;
+                    }));
+                }else {
+                    if(contextRoute.page) {
+                        allContextPromises.push(contexts[key].context.resolvePage(contextRoute.page, contextRoute.params).then((routePart)=> {
+                            routeProperties.params[key][setRouteProperties](routePart);
+                            return true;
+                        }));
+                    }else if(contextRoute.path) {
+                        allContextPromises.push(contexts[key].context.resolvePath(contextRoute.path, contextRoute.params).then((routePart)=> {
+                            routeProperties.params[key][setRouteProperties](routePart);
+                            return true;
+                        }));
+                    }else{
+                        throw new Error(`You must provide a context route or path to redirect to that context properly: ${contextRoute}`)
+                    }
+                }
             });
 
             return Promise.all(allContextPromises).then(()=>new RoutePart(routeProperties, allContexts, configurations, events, this));
@@ -114,7 +129,6 @@ export default class RouterContext {
                 }
             }
 
-            this[activePromises][routeName] = undefined;
             this[createPart](route, params).then((part)=>{
                 resolveRoute(part);
             });
@@ -296,12 +310,9 @@ export default class RouterContext {
 
     parse(route) {
         route = processRoute(route);
-        if(!this[activePromises][route]) {
-            this[activePromises][route] = new Promise((resolve)=> {
-                this[parser].parse(route, [resolve, route]);
-            });
-        }
 
-        return this[activePromises][route];
+        return new Promise((resolve)=> {
+            this[parser].parse(route, [resolve, route]);
+        });
     }
 }

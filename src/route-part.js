@@ -21,6 +21,7 @@ const dispatchUpdate = Symbol("fluxtuateRouter_dispatchUpdate");
 const partListeners = Symbol("fluxtuateRouter_partListeners");
 const fluxtuateRouterContext = Symbol("fluxtuateRouter_context");
 const fluxtuateRouterContextTail = Symbol("fluxtuateRouter_contextTail");
+const partName = Symbol("fluxtuateRouter_partName");
 
 const contextPrepend = new RegExp("\\/:context@", "g");
 const contextSuffix = new RegExp("\\*:", "g");
@@ -37,6 +38,7 @@ export default class RoutePart extends EventDispatcher {
         this[routeParts] = {};
         this[currentRoute] = {};
         this[contextRoute] = context;
+        this[partName] = "root";
 
         this[fluxtuateRouterContext] = new Context().config(Config(this));
         this[fluxtuateRouterContext][routeContext] = true;
@@ -94,6 +96,7 @@ export default class RoutePart extends EventDispatcher {
             this[contextsRoute].forEach((contextProp)=> {
                 this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_CHANGED, this[dispatchUpdate]));
                 this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_CHANGE, this[requestUpdate]));
+                this[currentRoute].params[contextProp].setName(contextProp);
                 this[routeParts][contextProp] = this[currentRoute].params[contextProp];
             });
 
@@ -111,6 +114,10 @@ export default class RoutePart extends EventDispatcher {
         };
 
         this[setRouteProperties](routeProperties, contexts, configurations, events);
+    }
+
+    setName(name) {
+        this[partName] = name;
     }
 
     start() {
@@ -217,6 +224,10 @@ export default class RoutePart extends EventDispatcher {
         });
         returnObject.params = Object.assign(params, returnObject.params);
         return returnObject;
+    }
+
+    get partName() {
+        return this[partName];
     }
 
     get locationContext() {
