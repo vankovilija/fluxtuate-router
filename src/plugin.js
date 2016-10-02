@@ -3,7 +3,7 @@ import {routeContext} from "./_internals"
 import {mediators as ContextMediators} from "fluxtuate/lib/context/_internals"
 import {context as MediatorContext} from "fluxtuate/lib/mediator/_internals"
 import RetainDelegator from "fluxtuate/lib/delegator/retain-delegator"
-import Router from "./router_new"
+import Router from "./router"
 import RedirectCommand from "./redirect-command"
 import {ROUTE_CHANGED} from "./route-enums"
 import {autobind} from "core-decorators"
@@ -14,9 +14,6 @@ const routerContextSymbol = Symbol("fluxtuateRouter_routerContext");
 
 @autobind
 export default class RouterPlugin {
-    @inject
-    eventDispatcher;
-
     @inject
     contextDispatcher;
 
