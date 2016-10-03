@@ -1,16 +1,19 @@
-import {Context, inject} from "fluxtuate"
+import {inject} from "fluxtuate"
+import {routeContext} from "./_internals"
+import {mediators as ContextMediators} from "fluxtuate/lib/context/_internals"
+import {context as MediatorContext} from "fluxtuate/lib/mediator/_internals"
 import RetainDelegator from "fluxtuate/lib/delegator/retain-delegator"
 import Router from "./router"
 import RedirectCommand from "./redirect-command"
+import {ROUTE_CHANGED} from "./route-enums"
+import {autobind} from "core-decorators"
 
 let router;
 
 const routerContextSymbol = Symbol("fluxtuateRouter_routerContext");
 
+@autobind
 export default class RouterPlugin {
-    @inject
-    eventDispatcher;
-
     @inject
     contextDispatcher;
 
@@ -20,141 +23,154 @@ export default class RouterPlugin {
     @inject
     options;
 
+    @inject
+    location;
+
     mediators = [];
 
-    rootContext;
+    setupMediator(med) {
+        if(this.context !== med[MediatorContext]) return;
+
+        if(this.mediators.indexOf(med) !== -1) return;
+
+        this.mediators.push(med);
+
+        let location = this.location ? this.location : router.location;
+
+        Object.defineProperty(med, "navstack", {
+            get() {
+                return location.currentRoute.params;
+            },
+            configurable: true
+        });
+
+        Object.defineProperty(med, "query", {
+            get() {
+                return router.query;
+            },
+            configurable: true
+        });
+
+        Object.defineProperty(med, "page", {
+            get() {
+                return location.currentRoute.page;
+            },
+            configurable: true
+        });
+
+        Object.defineProperty(med, "path", {
+            get() {
+                return location.currentRoute.path;
+            },
+            configurable: true
+        });
+
+        let self = this;
+
+        Object.defineProperty(med, "redirect", {
+            get() {
+                return (name, params)=>{
+                    self.context.dispatch("REDIRECT", {
+                        name, params
+                    })
+                }
+            },
+            configurable: true
+        });
+
+        this.medsDelegator.attachDelegate(med);
+    }
+
+    removeMediator(med) {
+        let index = this.mediators.indexOf(med);
+
+        if (index !== -1) {
+            this.mediators.splice(index, 1);
+        }
+
+        this.medsDelegator.detachDelegate(med);
+    }
     
     initialize(injectValue, removeValue) {
         if(this.context[routerContextSymbol]) return;
 
-        if(!router) {
-            router = new Router(this.context, this.options.transferQuery, this.options.base);
+        if(!this.context[routeContext]) {
+            if (!router) {
+                router = new Router(this.context, this.options.transferQuery, this.options.base, this.options.useHistory);
+                injectValue("location", router.location, "Gets the location for the application", false);
+            } else {
+                injectValue("location", this.location, "Gets the location for the application", false);
+            }
         }
 
         this.removeValue = removeValue;
         injectValue("router", router, "Gets the router for the application", false, "command");
 
-        this.medsDelegator = new RetainDelegator();
-        this.previousRoute = undefined;
-        this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
-            this.routeListener = router.addListener("route_changed", (eventName, payload)=> {
-                setTimeout(()=> {
-                    if (!this.medsDelegator) return;
-
-                    this.medsDelegator.dispatch("onNavStackChange", payload);
-                    this.previousRoute = {
-                        params: payload.params,
-                        routeDefaults: payload.routeDefaults
-                    };
-                    this.mediators.forEach((med)=> {
-                        med.hasNavstack = true;
-                    });
-                }, 10);
-            }, -10000);
-
-            this.mediatorListner = this.contextDispatcher.addListener("mediator_created", (eventName, payload)=> {
-                let med = payload.mediator;
-                this.mediators.push(med);
-
-                Object.defineProperty(med, "navstack", {
-                    get() {
-                        return router.params;
-                    }
-                });
-
-                Object.defineProperty(med, "query", {
-                    get() {
-                        return router.query;
-                    }
-                });
-
-                Object.defineProperty(med, "page", {
-                    get() {
-                        return router.page;
-                    }
-                });
-
-                Object.defineProperty(med, "route", {
-                    get() {
-                        return router.route;
-                    }
-                });
-
-                let self = this;
-
-                Object.defineProperty(med, "redirect", {
-                    get() {
-                        return (name, params, query)=>{
-                            self.eventDispatcher.dispatch("REDIRECT", {
-                                name, params, query
-                            });
-                        }
-                    }
-                });
-
-                this.medsDelegator.attachDelegate(med);
-            });
-
-            this.mediatorDestroyListener = this.contextDispatcher.addListener("mediator_destroyed", (eventName, payload)=> {
-                let index = this.mediators.indexOf(payload.mediator);
-
-                if (index !== -1) {
-                    this.mediators.splice(index, 1);
-                }
-
-                this.medsDelegator.detachDelegate(payload.mediator);
-            });
-        });
-        
         this.appStartingListener = this.contextDispatcher.addListener("starting", ()=>{
-            if(!this.context.parent){
-                this.context.commandMap.mapEvent("REDIRECT").toCommand(RedirectCommand);
-                this.rootContext = new Context();
-                this.rootContext[routerContextSymbol] = true;
-                this.context[routerContextSymbol] = true;
-                this.rootContext.plugin(RouterPlugin);
-                this.rootContext.addChild(this.context);
-                let routerContext;
-                let routerContextRoot;
+            this.context.commandMap.mapEvent("REDIRECT").toCommand(RedirectCommand).stopPropagation();
 
-                router.addListener("route_context_updated", (eventName, payload) => {
-                    routerContext = payload.endingContext;
-                    if(routerContext) {
-                        if(!routerContextRoot || this.rootContext !== routerContextRoot.parent) {
-                            if(routerContextRoot && routerContextRoot.parent){
-                                routerContextRoot.parent.removeChild(routerContextRoot);
-                            }
-                            routerContextRoot = payload.startingContext;
-                            if(routerContextRoot.parent !== this.rootContext) {
-                                if(routerContextRoot.parent){
-                                    routerContextRoot.parent.removeChild(routerContextRoot);
-                                }
-                                this.rootContext.addChild(routerContextRoot);
-                            }
-                            if(this.context.parent !== routerContext) {
-                                if(this.context.parent){
-                                    this.context.parent.removeChild(this.context);
-                                }
-                                routerContext.addChild(this.context);
-                            }
-                        }
-                         routerContext.start();
-                    }else{
-                        if(routerContextRoot.parent){
-                            routerContextRoot.parent.removeChild(routerContextRoot);
-                        }
-                        routerContextRoot = null;
-                    } 
+            if(!router.started)
+                router.startRouter();
+        });
+
+        this.medsDelegator = new RetainDelegator();
+        if(!this.context.isStarted) {
+            this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
+                this.startPlugin();
+            });
+        }else{
+            this.startPlugin();
+        }
+    }
+
+    startPlugin() {
+        if(this.routeListener){
+            this.routeListener.remove();
+        }
+
+        let location = this.location ? this.location : router.location;
+
+        this.routeListener = location.addListener(ROUTE_CHANGED, (eventName, payload)=> {
+            setTimeout(()=> {
+                if (!this.medsDelegator) return;
+
+                this.medsDelegator.dispatch("onNavStackChange", payload);
+                this.previousRoute = {
+                    params: payload.params,
+                    routeDefaults: payload.routeDefaults
+                };
+                this.mediators.forEach((med)=> {
+                    med.hasNavstack = true;
                 });
+            }, 10);
+        }, -10000);
 
-                if(!router.started)
-                    router.startRouter();
-            }
+        if(this.mediatorListner){
+            this.mediatorListner.remove();
+        }
+
+        this.mediatorListner = this.contextDispatcher.addListener("mediator_created", (eventName, payload)=> {
+            this.setupMediator(payload.mediator);
+        });
+
+        if(this.mediatorDestroyListener){
+            this.mediatorDestroyListener.remove();
+        }
+
+        this.mediatorDestroyListener = this.contextDispatcher.addListener("mediator_destroyed", (eventName, payload)=> {
+            this.removeMediator(payload.mediator);
+        });
+
+        this.context[ContextMediators].forEach((med)=>{
+            this.setupMediator(med);
         });
     }
     
     destroy() {
         if(this.context[routerContextSymbol]) return;
+        this.mediators.forEach((med)=>{
+            this.removeMediator(med);
+        });
         this.mediators = [];
         if(this.mediatorListner) {
             this.mediatorListner.remove();
@@ -196,9 +212,10 @@ export default class RouterPlugin {
             this.removingChildListener.remove();
             this.removingChildListener = null;
         }
-        
+
         if(this.removeValue) {
             this.removeValue("router");
+            if(!this.context[routeContext]) this.removeValue("location");
         }
     }
 }
