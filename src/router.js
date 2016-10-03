@@ -1,7 +1,7 @@
 import {autobind} from "core-decorators"
 import EventDispatcher from "fluxtuate/lib/event-dispatcher"
 import {ROUTE_CHANGE, ROUTE_CHANGED} from "./route-enums"
-import RouterContext from "./router-context"
+import RouterConfiguration from "./router-configuration"
 import History from "./history"
 import {setRouteProperties} from "./_internals"
 
@@ -16,6 +16,8 @@ const routeChanged = Symbol("fluxtuateRouter_routeChanged");
 const calculateURIState = Symbol("fluxtuateRouter_calculateURIState");
 const rootFluxtuateContext = Symbol("fluxtuateRouter_rootFluxtuateContext");
 const query = Symbol("fluxtuateRouter_query");
+const useHistory = Symbol("fluxtuateRouter_useHistory");
+const goToURI = Symbol("fluxtuateRouter_goToURI");
 
 function processQuery(route, queryParams = {}) {
     let r = route;
@@ -38,12 +40,13 @@ function processQuery(route, queryParams = {}) {
 
 @autobind
 export default class Router extends EventDispatcher{
-    constructor(context, routerTransferQuery = [], base = "") {
+    constructor(context, routerTransferQuery = [], base = "", shouldUseHistory = true) {
         super();
+        this[useHistory] = shouldUseHistory;
         this[started] = false;
         this[locationCallbacks] = [];
 
-        let rootContext = new RouterContext("root", this);
+        let rootContext = new RouterConfiguration("root", this);
         this[contexts] = {root: rootContext};
 
         this[rootPart] = rootContext.generatePart();
@@ -75,6 +78,10 @@ export default class Router extends EventDispatcher{
                     this[query][qa[0]] = decodeURIComponent(qa[1]);
                 });
             }
+            this[goToURI](uri);
+        };
+
+        this[goToURI] = (uri) => {
             uri = uri.replace(this[baseURL], "");
             if(this[activeURI] !== uri)
                 rootContext.parse(uri).then((part)=>{
@@ -85,15 +92,15 @@ export default class Router extends EventDispatcher{
                     });
                 });
             this[activeURI] = uri;
-        };
+        }
     }
 
-    createContext(contextName) {
-        if(this[contexts].hasOwnProperty(contextName)) {
-            throw new Error(`You already have created a context with the ${contextName} name, context names must be unique!`)
+    createConfiguration(configurationName) {
+        if(this[contexts].hasOwnProperty(configurationName)) {
+            throw new Error(`You already have created a configuration with the name of ${configurationName}, route configuration names must be unique!`)
         }
-        this[contexts][contextName] = new RouterContext(contextName, this);
-        return this[contexts][contextName];
+        this[contexts][configurationName] = new RouterConfiguration(configurationName, this);
+        return this[contexts][configurationName];
     }
 
     mapRoute(route, routeParams) {
@@ -115,12 +122,20 @@ export default class Router extends EventDispatcher{
 
         route = this[baseURL] + route;
 
-        History.pushState(undefined, document.title, route);
+        if(this[useHistory]) {
+            History.pushState(undefined, document.title, route);
+        }else{
+            this[goToURI](route);
+        }
     }
 
     startRouter() {
-        History.Adapter.bind(window,"statechange",this[calculateURIState]);
-        History.Adapter.onDomLoad(this[calculateURIState]);
+        if(this[useHistory]) {
+            History.Adapter.bind(window, "statechange", this[calculateURIState]);
+            History.Adapter.onDomLoad(this[calculateURIState]);
+        }else{
+            this[goToURI]("/")
+        }
         this[started] = true;
     }
 

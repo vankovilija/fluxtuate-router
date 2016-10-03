@@ -53,7 +53,7 @@ function addEventToRoute(route, eventName) {
 
 const resolvedPromise = new Promise((resolve)=>resolve());
 
-export default class RouterContext {
+export default class RouterConfiguration {
     constructor(contextName, containerRouter) {
         this[parser] = CrossRoads.create();
         this[parser].greedyEnabled = false;

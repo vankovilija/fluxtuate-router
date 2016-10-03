@@ -96,7 +96,7 @@ export default class RouterPlugin {
 
         if(!this.context[routeContext]) {
             if (!router) {
-                router = new Router(this.context, this.options.transferQuery, this.options.base);
+                router = new Router(this.context, this.options.transferQuery, this.options.base, this.options.useHistory);
                 injectValue("location", router.location, "Gets the location for the application", false);
             } else {
                 injectValue("location", this.location, "Gets the location for the application", false);
