@@ -129,6 +129,10 @@ export default class Router extends EventDispatcher{
         }
     }
 
+    get query() {
+        return Object.assign({}, this[query]);
+    }
+
     startRouter() {
         if(this[useHistory]) {
             History.Adapter.bind(window, "statechange", this[calculateURIState]);
