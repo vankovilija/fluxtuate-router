@@ -67,7 +67,11 @@ export default class Router extends EventDispatcher{
 
         this[calculateURIState] = () => {
             var State = History.getState();
-            var uriArray = State.hash.split("?");
+            this[goToURI](State.hash);
+        };
+
+        this[goToURI] = (url) => {
+            var uriArray = url.split("?");
             let uri = uriArray[0];
             let queryArray = uriArray[1];
             this[query] = {};
@@ -78,10 +82,7 @@ export default class Router extends EventDispatcher{
                     this[query][qa[0]] = decodeURIComponent(qa[1]);
                 });
             }
-            this[goToURI](uri);
-        };
 
-        this[goToURI] = (uri) => {
             uri = uri.replace(this[baseURL], "");
             if(this[activeURI] !== uri)
                 rootContext.parse(uri).then((part)=>{
@@ -134,12 +135,10 @@ export default class Router extends EventDispatcher{
     }
 
     startRouter() {
-        if(this[useHistory]) {
+        History.Adapter.onDomLoad(this[calculateURIState]);
+        if(this[useHistory])
             History.Adapter.bind(window, "statechange", this[calculateURIState]);
-            History.Adapter.onDomLoad(this[calculateURIState]);
-        }else{
-            this[goToURI]("/")
-        }
+
         this[started] = true;
     }
 
