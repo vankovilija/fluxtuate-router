@@ -84,6 +84,12 @@ export default class RouterConfiguration {
             let allContextPromises = [resolvedPromise];
 
             allContexts.forEach((key)=>{
+                let contextObject = contexts[key];
+                if(!contextObject.context) {
+                    let context = this[router].contexts[contextObject.contextType];
+                    if(!context) throw new Error(`No context found with the name: ${contextObject.contextType} in context ${this[name]}!`);
+                    contextObject.context = context;
+                }
                 let prop = `context@${key}*`;
                 let contextRoute = routeProperties.params[prop];
                 if(contextRoute) {
@@ -91,20 +97,20 @@ export default class RouterConfiguration {
                 }else{
                     contextRoute = "";
                 }
-                routeProperties.params[key] = contexts[key].context.generatePart();
+                routeProperties.params[key] = contextObject.context.generatePart();
                 if(isString(contextRoute)){
-                    allContextPromises.push(contexts[key].context.parse(contextRoute).then((routePart)=> {
+                    allContextPromises.push(contextObject.context.parse(contextRoute).then((routePart)=> {
                         routeProperties.params[key][setRouteProperties](routePart);
                         return true;
                     }));
                 }else {
                     if(contextRoute.page) {
-                        allContextPromises.push(contexts[key].context.resolvePage(contextRoute.page, contextRoute.params).then((routePart)=> {
+                        allContextPromises.push(contextObject.context.resolvePage(contextRoute.page, contextRoute.params).then((routePart)=> {
                             routeProperties.params[key][setRouteProperties](routePart);
                             return true;
                         }));
                     }else if(contextRoute.path) {
-                        allContextPromises.push(contexts[key].context.resolvePath(contextRoute.path, contextRoute.params).then((routePart)=> {
+                        allContextPromises.push(contextObject.context.resolvePath(contextRoute.path, contextRoute.params).then((routePart)=> {
                             routeProperties.params[key][setRouteProperties](routePart);
                             return true;
                         }));
@@ -166,12 +172,9 @@ export default class RouterConfiguration {
                 let contextType = contextName[1] || contextName[0];
                 contextName = contextName[0];
 
-                let context = this[router].contexts[contextType];
-                if(!context) throw new Error(`No context found with the name: ${contextType} in context ${this[name]}!`);
-
                 let contextProp = ":context@" + contextName + "*:";
                 currentPath = currentPath.replace(routeString, contextProp);
-                newRoute.contexts[contextName] = {context, contextProp};
+                newRoute.contexts[contextName] = {contextType, contextProp};
             }
 
             newRoute.path = currentPath;
