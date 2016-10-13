@@ -22,14 +22,16 @@ const partListeners = Symbol("fluxtuateRouter_partListeners");
 const fluxtuateRouterContext = Symbol("fluxtuateRouter_context");
 const fluxtuateRouterContextTail = Symbol("fluxtuateRouter_contextTail");
 const partName = Symbol("fluxtuateRouter_partName");
+const notFound = Symbol("fluxtuateRouter_notFound");
 
 const contextPrepend = new RegExp("\\/:context@", "g");
 const contextSuffix = new RegExp("\\*:", "g");
 
 @autobind
 export default class RoutePart extends EventDispatcher {
-    constructor (routeProperties = {}, contexts = [], configurations = [], events = [], context = {}) {
+    constructor (routeProperties = {}, contexts = [], configurations = [], events = [], context = {}, isNotFound = false) {
         super();
+        this[notFound] = isNotFound;
         this[partListeners] = [];
         this[contextsRoute] = [];
         this[configurationsRoute] = [];
@@ -49,6 +51,7 @@ export default class RoutePart extends EventDispatcher {
 
         this[setRouteProperties] = (routeProperties, contexts, configurations, events) => {
             if (routeProperties[currentRoute]) {
+                this[notFound] = routeProperties[notFound];
                 contexts = routeProperties[contextsRoute];
                 configurations = routeProperties[newConfigurationsRoute];
                 events = routeProperties[eventsRoute];
@@ -240,6 +243,10 @@ export default class RoutePart extends EventDispatcher {
 
     get endingContext() {
         return this[fluxtuateRouterContextTail];
+    }
+
+    get isNotFound() {
+        return this[notFound];
     }
 
     toString () {

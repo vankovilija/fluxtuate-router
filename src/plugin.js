@@ -106,12 +106,10 @@ export default class RouterPlugin {
         this.removeValue = removeValue;
         injectValue("router", router, "Gets the router for the application", false, "command");
 
-        this.appStartingListener = this.contextDispatcher.addListener("starting", ()=>{
-            this.context.commandMap.mapEvent("REDIRECT").toCommand(RedirectCommand).stopPropagation();
+        this.context.commandMap.mapEvent("REDIRECT").toCommand(RedirectCommand).stopPropagation();
 
-            if(!router.started)
-                router.startRouter();
-        });
+        if(!router.started)
+            router.startRouter();
 
         this.medsDelegator = new RetainDelegator();
         if(!this.context.isStarted) {
@@ -145,6 +143,8 @@ export default class RouterPlugin {
             }, 10);
         }, -10000);
 
+        this.medsDelegator.dispatch("onNavStackChange", location.currentRoute);
+
         if(this.mediatorListner){
             this.mediatorListner.remove();
         }
@@ -168,6 +168,7 @@ export default class RouterPlugin {
     
     destroy() {
         if(this.context[routerContextSymbol]) return;
+        this.context.commandMap.unmapEvent("REDIRECT", RedirectCommand);
         this.mediators.forEach((med)=>{
             this.removeMediator(med);
         });
@@ -195,10 +196,6 @@ export default class RouterPlugin {
         if(this.appStartedListener) {
             this.appStartedListener.remove();
             this.appStartedListener = null;
-        }
-        if(this.appStartingListener) {
-            this.appStartingListener.remove();
-            this.appStartingListener = null;
         }
         if(this.medsDelegator){
             this.medsDelegator.destroy();

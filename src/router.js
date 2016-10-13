@@ -13,11 +13,29 @@ const transferQuery = Symbol("fluxtuateRouter_transferQuery");
 const rootPart = Symbol("fluxtuateRouter_rootPart");
 const locationCallbacks = Symbol("fluxtuateRouter_locationCallbacks");
 const routeChanged = Symbol("fluxtuateRouter_routeChanged");
+const loadRouter = Symbol("fluxtuateRouter_loadRouter");
 const calculateURIState = Symbol("fluxtuateRouter_calculateURIState");
 const rootFluxtuateContext = Symbol("fluxtuateRouter_rootFluxtuateContext");
 const query = Symbol("fluxtuateRouter_query");
 const useHistory = Symbol("fluxtuateRouter_useHistory");
 const goToURI = Symbol("fluxtuateRouter_goToURI");
+
+function processRoute(route){
+    let r = route;
+    if(r === "") r = "/";
+    //if the first char is not slash - add slash
+    if(r[0] !== "/") {
+        r = "/" + r;
+    }
+    //if the route is just slash that means root and don't remove the last slash
+    if (!(r && r.length == 1 && r === "/")) {
+        //if the last char is slash - remove it
+        if (r[r.length - 1] === "/") {
+            r = r.slice(0, r.length - 1);
+        }
+    }
+    return r;
+}
 
 function processQuery(route, queryParams = {}) {
     let r = route;
@@ -64,6 +82,11 @@ export default class Router extends EventDispatcher{
         this[baseURL] = base;
         this[transferQuery] = routerTransferQuery;
         this[rootFluxtuateContext] = context;
+
+        this[loadRouter] = () => {
+            this[calculateURIState]();
+            this[loadRouter] = ()=>{};
+        };
 
         this[calculateURIState] = () => {
             var State = History.getState();
@@ -119,7 +142,7 @@ export default class Router extends EventDispatcher{
                 defQuery[qN] = this.query[qN];
         });
 
-        route = processQuery(route, Object.assign({}, query, defQuery));
+        route = processQuery(processRoute(route), Object.assign({}, query, defQuery));
 
         route = this[baseURL] + route;
 
@@ -135,7 +158,7 @@ export default class Router extends EventDispatcher{
     }
 
     startRouter() {
-        History.Adapter.onDomLoad(this[calculateURIState]);
+        History.Adapter.onDomLoad(this[loadRouter]);
         if(this[useHistory])
             History.Adapter.bind(window, "statechange", this[calculateURIState]);
 
@@ -148,5 +171,9 @@ export default class Router extends EventDispatcher{
 
     get location() {
         return this[rootPart];
+    }
+
+    get started() {
+        return this[started];
     }
 }

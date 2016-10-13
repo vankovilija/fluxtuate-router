@@ -1,5 +1,5 @@
 import {findIndex} from "lodash/array"
-import {isString, isFunction} from "lodash/lang"
+import {isString, isFunction, isObject} from "lodash/lang"
 import CrossRoads from "crossroads"
 import {propsRegex, createPart, setRouteProperties} from "./_internals"
 import RoutePart from "./route-part"
@@ -51,6 +51,12 @@ function addEventToRoute(route, eventName) {
     return this;
 }
 
+function isNotFound(configuration, route) {
+    configuration[notFoundRoute] = route;
+
+    return this;
+}
+
 const resolvedPromise = new Promise((resolve)=>resolve());
 
 export default class RouterConfiguration {
@@ -59,7 +65,6 @@ export default class RouterConfiguration {
         this[parser].greedyEnabled = false;
         this[parser].ignoreState = true;
         this[parser].normalizeFn = CrossRoads.NORM_AS_OBJECT;
-        this[parser].shouldTypecast = true;
         this[router] = containerRouter;
         this[routes] = [];
         this[routeChangeResolve] = null;
@@ -71,7 +76,12 @@ export default class RouterConfiguration {
             contexts: {}
         };
 
-        this[createPart] = ({pageName, path, routeDefaults, contexts, configurations, events}, params) => {
+        this[createPart] = (routeObject, params) => {
+            let isNotFound = false;
+            if(routeObject === this[notFoundRoute]){
+                isNotFound = true;
+            }
+            let {pageName, path, routeDefaults, contexts, configurations, events} = routeObject;
             let routeProperties = {
                 page: pageName,
                 path: path,
@@ -95,32 +105,44 @@ export default class RouterConfiguration {
                 if(contextRoute) {
                     delete routeProperties.params[prop];
                 }else{
-                    contextRoute = "";
+                    contextRoute = routeProperties.params[key];
+                    if(contextRoute){
+                        delete routeProperties.params[key];
+                    }else{
+                        contextRoute = "";
+                    }
                 }
                 routeProperties.params[key] = contextObject.context.generatePart();
+                let contextPromise;
                 if(isString(contextRoute)){
-                    allContextPromises.push(contextObject.context.parse(contextRoute).then((routePart)=> {
-                        routeProperties.params[key][setRouteProperties](routePart);
-                        return true;
-                    }));
+                    contextPromise = contextObject.context.parse(contextRoute);
                 }else {
                     if(contextRoute.page) {
-                        allContextPromises.push(contextObject.context.resolvePage(contextRoute.page, contextRoute.params).then((routePart)=> {
-                            routeProperties.params[key][setRouteProperties](routePart);
-                            return true;
-                        }));
+                        contextPromise = contextObject.context.resolvePage(contextRoute.page, contextRoute.params);
                     }else if(contextRoute.path) {
-                        allContextPromises.push(contextObject.context.resolvePath(contextRoute.path, contextRoute.params).then((routePart)=> {
-                            routeProperties.params[key][setRouteProperties](routePart);
-                            return true;
-                        }));
-                    }else{
+                        contextPromise = contextObject.context.resolvePath(contextRoute.path, contextRoute.params);
+                    }else if(isObject(contextRoute) && contextObject.context[routes].length > 0){
+                        contextPromise = contextObject.context.resolvePath(contextObject.context[routes][0].path, contextRoute);
+                    }else {
                         throw new Error(`You must provide a context route or path to redirect to that context properly: ${contextRoute}`)
                     }
                 }
+                allContextPromises.push(contextPromise.then((routePart)=> {
+                    if(routePart.isNotFound){
+                        isNotFound = true;
+                    }
+                    routeProperties.params[key][setRouteProperties](routePart);
+                    return true;
+                }));
             });
 
-            return Promise.all(allContextPromises).then(()=>new RoutePart(routeProperties, allContexts, configurations, events, this));
+            return Promise.all(allContextPromises).then(()=>{
+                if(isNotFound){
+                    return this.generatePart();
+                }else {
+                    return new RoutePart(routeProperties, allContexts, configurations, events, this)
+                }
+            });
         };
 
         //path = "consultant/{id}"  browserRoute="consultant/3"  route={path: "consultant/{id}", pageName: "consultant", routeDefaults...}  resolveRoute = function...  params={id: 3}
@@ -196,14 +218,7 @@ export default class RouterConfiguration {
     }
 
     generatePart() {
-        let routeProperties = {
-            page: "",
-            path: "/404",
-            routeDefaults: {},
-            params: {}
-        };
-
-        return new RoutePart(routeProperties, [], [], [], this)
+        return new RoutePart(this[notFoundRoute], [], [], [], this, true)
     }
 
     mapConfig(Config) {
@@ -225,7 +240,8 @@ export default class RouterConfiguration {
                 }
                 addConfigurationToRoute(route, Config);
                 return {
-                    withEvent: addEventToRoute.bind(undefined, route)
+                    withEvent: addEventToRoute.bind(undefined, route),
+                    isNotFound: isNotFound.bind(undefined, this, route)
                 }
             },
             toPage (pageName) {
@@ -237,7 +253,21 @@ export default class RouterConfiguration {
                 if(!route.configurations) route.configurations = [];
                 route.configurations.push(Config);
                 return {
-                    withEvent: addEventToRoute.bind(undefined, route)
+                    withEvent: addEventToRoute.bind(undefined, route),
+                    isNotFound: isNotFound.bind(undefined, this, route)
+                }
+            },
+            toAll () {
+                self[routes].forEach((route)=>{
+                    if(!route.configurations) route.configurations = [];
+                    route.configurations.push(Config);
+                });
+                return {
+                    withEvent: (eventName)=>{
+                        self[routes].forEach((route)=>{
+                            addEventToRoute(route, eventName);
+                        });
+                    }
                 }
             }
         };
@@ -262,7 +292,8 @@ export default class RouterConfiguration {
                 }
                 addEventToRoute(route, eventName);
                 return {
-                    withConfiguration: addConfigurationToRoute.bind(undefined, route)
+                    withConfiguration: addConfigurationToRoute.bind(undefined, route),
+                    isNotFound: isNotFound.bind(undefined, this, route)
                 }
             },
             toPage (pageName) {
@@ -273,13 +304,25 @@ export default class RouterConfiguration {
                 }
                 addEventToRoute(route, eventName);
                 return {
-                    withConfiguration: addConfigurationToRoute.bind(undefined, route)
+                    withConfiguration: addConfigurationToRoute.bind(undefined, route),
+                    isNotFound: isNotFound.bind(undefined, this, route)
+                }
+            },
+            toAll () {
+                self[routes].forEach((route)=>{
+                    addEventToRoute(route, eventName);
+                });
+                return {
+                    withConfiguration: (Config)=>{
+                        self[routes].forEach((route)=>{
+                            addConfigurationToRoute(route, Config);
+                        });
+                    }
                 }
             }
         }
     }
 
-    //path = "/customer/{id}"  routeDefault={title: "customer"}
     mapRoute(path, routeDefaults) {
         let routeObject = this[formRoute](path);
         routeObject = Object.assign({routeDefaults}, routeObject);
@@ -293,11 +336,21 @@ export default class RouterConfiguration {
 
                 return {
                     withConfiguration: addConfigurationToRoute.bind({
-                        withEvent: addEventToRoute.bind(undefined, routeObject)
+                        withEvent: addEventToRoute.bind(undefined, routeObject),
+                        isNotFound: isNotFound.bind(undefined, this, routeObject)
                     }, routeObject),
                     withEvent: addEventToRoute.bind({
-                        withConfiguration: addConfigurationToRoute.bind(undefined, routeDefaults)
-                    }, routeObject)
+                        withConfiguration: addConfigurationToRoute.bind(undefined, routeObject),
+                        isNotFound: isNotFound.bind(undefined, this, routeObject)
+                    }, routeObject),
+                    isNotFound: isNotFound.bind({
+                        withConfiguration: addConfigurationToRoute.bind({
+                            withEvent: addEventToRoute.bind(undefined, routeObject)
+                        }, routeObject),
+                        withEvent: addEventToRoute.bind({
+                            withConfiguration: addConfigurationToRoute.bind(undefined, routeObject)
+                        }, routeObject),
+                    }, this, routeObject)
                 }
             }
         }
