@@ -220,7 +220,7 @@ export default class RoutePart extends EventDispatcher {
     }
 
     get currentRoute() {
-        let returnObject = Object.assign({context: this.endingContext}, this[currentRoute]);
+        let returnObject = Object.assign({context: this.endingContext, query: this[contextRoute].query}, this[currentRoute]);
         let params = {};
         Object.keys(this[routeParts]).forEach((key)=>{
             params[key] = this[routeParts][key].currentRoute;

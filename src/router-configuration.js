@@ -371,4 +371,8 @@ export default class RouterConfiguration {
             this[parser].parse(route, [resolve, route]);
         });
     }
+
+    get query() {
+        return this[router].query;
+    }
 }
