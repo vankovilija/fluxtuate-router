@@ -214,6 +214,8 @@ export default class Router extends EventDispatcher {
                 query: this[query]
             };
 
+            this.dispatch("route_will_change", routeProperties);
+
             newConfig.filter((con)=>con && !con.config).forEach((con) =>{
                 if(con.event){
                     this[rootContext].dispatch(con.event, routeProperties);
