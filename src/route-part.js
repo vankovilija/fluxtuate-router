@@ -44,6 +44,12 @@ export default class RoutePart extends EventDispatcher {
 
         this[fluxtuateRouterContext] = new Context().config(Config(this));
         this[fluxtuateRouterContext][routeContext] = true;
+        this[fluxtuateRouterContext].__originalDestroy = this[fluxtuateRouterContext].destroy;
+        this[fluxtuateRouterContext].destroy = ()=>{
+            if(this[fluxtuateRouterContext].parent) {
+                this[fluxtuateRouterContext].parent.removeChild(this[fluxtuateRouterContext]);
+            }
+        };
         //...all other contexts with configurations
         this[fluxtuateRouterContextTail] = new Context();
 
@@ -74,7 +80,7 @@ export default class RoutePart extends EventDispatcher {
                     newPrams[contextProp] = contextPart;
                     newParamsKeys.splice(propIndex, 1);
                 }else
-                    contextPart[destroy]();
+                    contextPart.destroy();
             });
 
             if(this[currentRoute].page !== routeProperties.page || this[currentRoute].path !== routeProperties.path){
@@ -217,6 +223,11 @@ export default class RoutePart extends EventDispatcher {
     goToRoute (route) {
         this[setRouteProperties](route);
         this[requestUpdate]();
+    }
+
+    destroy() {
+        this[destroy]();
+        this[fluxtuateRouterContext].__originalDestroy();
     }
 
     get currentRoute() {
