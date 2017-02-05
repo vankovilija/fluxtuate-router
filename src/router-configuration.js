@@ -64,6 +64,9 @@ export default class RouterConfiguration {
         this[parser] = CrossRoads.create();
         this[parser].greedyEnabled = false;
         this[parser].ignoreState = true;
+        this[parser].bypassed.add((resolveRoute, rejectRoute)=>{
+            rejectRoute(new Error("Route not found!"));
+        });
         this[parser].normalizeFn = CrossRoads.NORM_AS_OBJECT;
         this[router] = containerRouter;
         this[routes] = [];
@@ -80,6 +83,9 @@ export default class RouterConfiguration {
             let isNotFound = false;
             if(routeObject === this[notFoundRoute]){
                 isNotFound = true;
+                return new Promise((resolve, reject)=>{
+                    reject(new Error("Route not found!"));
+                });
             }
             let {pageName, path, routeDefaults, contexts, configurations, events} = routeObject;
             let routeProperties = {
@@ -115,7 +121,7 @@ export default class RouterConfiguration {
                 routeProperties.params[key] = contextObject.context.generatePart();
                 let contextPromise;
                 if(isString(contextRoute)){
-                    contextPromise = contextObject.context.parse(contextRoute);
+                    contextPromise = contextObject.context.parse(contextRoute, true);
                 }else {
                     if(contextRoute.page) {
                         contextPromise = contextObject.context.resolvePage(contextRoute.page, contextRoute.params);
@@ -146,7 +152,7 @@ export default class RouterConfiguration {
         };
 
         //path = "consultant/{id}"  browserRoute="consultant/3"  route={path: "consultant/{id}", pageName: "consultant", routeDefaults...}  resolveRoute = function...  params={id: 3}
-        this[loadRoute] = (route, resolveRoute, routeName, params) => {
+        this[loadRoute] = (route, resolveRoute, rejectRoute, routeName, isSubRoute, params) => {
             for(let key in params){
                 if(params.hasOwnProperty(key)) {
                     let param = params[key];
@@ -159,6 +165,12 @@ export default class RouterConfiguration {
 
             this[createPart](route, params).then((part)=>{
                 resolveRoute(part);
+            }).caught(()=>{
+                if(isSubRoute) {
+                    rejectRoute(new Error("Route not found!"));
+                }else{
+                    resolveRoute(this.generatePart());
+                }
             });
         };
 
@@ -364,11 +376,11 @@ export default class RouterConfiguration {
         return this[createPart](this[getPathRoute](this[formRoute](pagePath).path), params);
     }
 
-    parse(route) {
+    parse(route, isSubRoute = false) {
         route = processRoute(route);
 
-        return new Promise((resolve)=> {
-            this[parser].parse(route, [resolve, route]);
+        return new Promise((resolve, reject)=> {
+            this[parser].parse(route, [resolve, reject, route, isSubRoute]);
         });
     }
 

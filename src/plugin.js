@@ -1,8 +1,8 @@
 import {inject} from "fluxtuate"
 import {routeContext} from "./_internals"
+import {isFunction} from "lodash/lang"
 import {mediators as ContextMediators} from "fluxtuate/lib/context/_internals"
 import {context as MediatorContext} from "fluxtuate/lib/mediator/_internals"
-import RetainDelegator from "fluxtuate/lib/delegator/retain-delegator"
 import Router from "./router"
 import RedirectCommand from "./redirect-command"
 import {ROUTE_CHANGED} from "./route-enums"
@@ -78,7 +78,9 @@ export default class RouterPlugin {
             configurable: true
         });
 
-        this.medsDelegator.attachDelegate(med);
+        if(isFunction(med.onNavStackChange)) {
+            med.onNavStackChange(location.currentRoute);
+        }
     }
 
     removeMediator(med) {
@@ -87,12 +89,12 @@ export default class RouterPlugin {
         if (index !== -1) {
             this.mediators.splice(index, 1);
         }
-
-        this.medsDelegator.detachDelegate(med);
     }
     
     initialize(injectValue, removeValue) {
         if(this.context[routerContextSymbol]) return;
+
+        this.destroyed = false;
 
         if(!this.context[routeContext]) {
             if (!router) {
@@ -111,7 +113,6 @@ export default class RouterPlugin {
         if(!router.started)
             router.startRouter();
 
-        this.medsDelegator = new RetainDelegator();
         if(!this.context.isStarted) {
             this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
                 this.startPlugin();
@@ -119,6 +120,22 @@ export default class RouterPlugin {
         }else{
             this.startPlugin();
         }
+    }
+
+    configureRoute(routeProps) {
+        if (this.destroyed) return;
+
+        this.mediators.forEach((med)=> {
+            if(!med.destroyed && isFunction(med.onNavStackChange)) {
+                med.onNavStackChange(routeProps);
+            }
+            med.hasNavstack = true;
+        });
+
+        this.previousRoute = {
+            params: routeProps.params,
+            routeDefaults: routeProps.routeDefaults
+        };
     }
 
     startPlugin() {
@@ -130,20 +147,11 @@ export default class RouterPlugin {
 
         this.routeListener = location.addListener(ROUTE_CHANGED, (eventName, payload)=> {
             setTimeout(()=> {
-                if (!this.medsDelegator) return;
-
-                this.medsDelegator.dispatch("onNavStackChange", payload);
-                this.previousRoute = {
-                    params: payload.params,
-                    routeDefaults: payload.routeDefaults
-                };
-                this.mediators.forEach((med)=> {
-                    med.hasNavstack = true;
-                });
-            }, 10);
+                this.configureRoute(payload);
+            }, 30);
         }, -10000);
 
-        this.medsDelegator.dispatch("onNavStackChange", location.currentRoute);
+        this.configureRoute(location.currentRoute);
 
         if(this.mediatorListner){
             this.mediatorListner.remove();
@@ -151,7 +159,7 @@ export default class RouterPlugin {
 
         this.mediatorListner = this.contextDispatcher.addListener("mediator_created", (eventName, payload)=> {
             this.setupMediator(payload.mediator);
-        });
+        }, 1000000);
 
         if(this.mediatorDestroyListener){
             this.mediatorDestroyListener.remove();
@@ -159,7 +167,7 @@ export default class RouterPlugin {
 
         this.mediatorDestroyListener = this.contextDispatcher.addListener("mediator_destroyed", (eventName, payload)=> {
             this.removeMediator(payload.mediator);
-        });
+        }, 10000000);
 
         this.context[ContextMediators].forEach((med)=>{
             this.setupMediator(med);
@@ -172,6 +180,7 @@ export default class RouterPlugin {
         this.mediators.forEach((med)=>{
             this.removeMediator(med);
         });
+        this.destroyed = true;
         this.mediators = [];
         if(this.mediatorListner) {
             this.mediatorListner.remove();
@@ -197,10 +206,6 @@ export default class RouterPlugin {
             this.appStartedListener.remove();
             this.appStartedListener = null;
         }
-        if(this.medsDelegator){
-            this.medsDelegator.destroy();
-            this.medsDelegator = null;
-        }
         if(this.addingChildListener) {
             this.addingChildListener.remove();
             this.addingChildListener = null;
@@ -209,7 +214,6 @@ export default class RouterPlugin {
             this.removingChildListener.remove();
             this.removingChildListener = null;
         }
-
         if(this.removeValue) {
             this.removeValue("router");
             if(!this.context[routeContext]) this.removeValue("location");

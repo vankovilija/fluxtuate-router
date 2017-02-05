@@ -2,7 +2,7 @@ import {Context} from "fluxtuate"
 import Config from "./route-config"
 import EventDispatcher from "fluxtuate/lib/event-dispatcher"
 import {setRouteProperties, propsRegex, routeContext} from "./_internals"
-import {ROUTE_CHANGE, ROUTE_CONTEXT_UPDATED, ROUTE_CHANGED} from "./route-enums"
+import {ROUTE_CHANGE, ROUTE_CONTEXT_UPDATED, ROUTE_CHANGED, ROUTE_REPLACE, ROUTE_NOT_FOUND} from "./route-enums"
 import {difference} from "lodash/array"
 import {destroy} from "fluxtuate/lib/event-dispatcher/_internals"
 import {autobind} from "core-decorators"
@@ -17,6 +17,8 @@ const newConfigurationsRoute = Symbol("fluxtuateRouter_newConfigurationsRoute");
 const eventsRoute = Symbol("fluxtuateRouter_eventsRoute");
 const contextsRoute = Symbol("fluxtuateRouter_contextsRoute");
 const requestUpdate = Symbol("fluxtuateRouter_requestUpdate");
+const requestNotFound = Symbol("fluxtuateRouter_requestNotFound");
+const requestReplacement = Symbol("fluxtuateRouter_requestReplacement");
 const dispatchUpdate = Symbol("fluxtuateRouter_dispatchUpdate");
 const partListeners = Symbol("fluxtuateRouter_partListeners");
 const fluxtuateRouterContext = Symbol("fluxtuateRouter_context");
@@ -105,6 +107,8 @@ export default class RoutePart extends EventDispatcher {
             this[contextsRoute].forEach((contextProp)=> {
                 this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_CHANGED, this[dispatchUpdate]));
                 this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_CHANGE, this[requestUpdate]));
+                this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_REPLACE, this[requestReplacement]));
+                this[partListeners].push(this[currentRoute].params[contextProp].addListener(ROUTE_NOT_FOUND, this[requestNotFound]));
                 this[currentRoute].params[contextProp].setName(contextProp);
                 this[routeParts][contextProp] = this[currentRoute].params[contextProp];
             });
@@ -116,6 +120,14 @@ export default class RoutePart extends EventDispatcher {
 
         this[requestUpdate] = () => {
             this.dispatch(ROUTE_CHANGE, this);
+        };
+
+        this[requestNotFound] = () => {
+            this.dispatch(ROUTE_NOT_FOUND, this);
+        };
+
+        this[requestReplacement] = () => {
+            this.dispatch(ROUTE_REPLACE, this);
         };
 
         this[dispatchUpdate] = () => {
@@ -213,16 +225,33 @@ export default class RoutePart extends EventDispatcher {
     }
 
     goToPage (pageName, params) {
-        this[contextRoute].resolvePage(pageName, params).then(this.goToRoute);
+        this[contextRoute].resolvePage(pageName, params).then(this.goToRoute)
+            .caught(this[requestNotFound]);
+    }
+
+    replacePage (pageName, params) {
+        this[contextRoute].resolvePage(pageName, params).then(this.replaceRoute)
+            .caught(this[requestNotFound]);
     }
 
     goToPath (pagePath, params) {
-        this[contextRoute].resolvePath(pagePath, params).then(this.goToRoute);
+        this[contextRoute].resolvePath(pagePath, params).then(this.goToRoute)
+            .caught(this[requestNotFound]);
+    }
+
+    replacePath (pagePath, params) {
+        this[contextRoute].resolvePath(pagePath, params).then(this.replaceRoute)
+            .caught(this[requestNotFound]);
     }
 
     goToRoute (route) {
         this[setRouteProperties](route);
         this[requestUpdate]();
+    }
+
+    replaceRoute (route) {
+        this[setRouteProperties](route);
+        this[requestReplacement]();
     }
 
     destroy() {

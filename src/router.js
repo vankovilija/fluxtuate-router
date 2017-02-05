@@ -1,6 +1,6 @@
 import {autobind} from "core-decorators"
 import EventDispatcher from "fluxtuate/lib/event-dispatcher"
-import {ROUTE_CHANGE, ROUTE_CHANGED} from "./route-enums"
+import {ROUTE_CHANGE, ROUTE_CHANGED, ROUTE_REPLACE, ROUTE_NOT_FOUND} from "./route-enums"
 import RouterConfiguration from "./router-configuration"
 import History from "./history"
 import {setRouteProperties} from "./_internals"
@@ -13,6 +13,8 @@ const transferQuery = Symbol("fluxtuateRouter_transferQuery");
 const rootPart = Symbol("fluxtuateRouter_rootPart");
 const locationCallbacks = Symbol("fluxtuateRouter_locationCallbacks");
 const routeChanged = Symbol("fluxtuateRouter_routeChanged");
+const routeReplaced = Symbol("fluxtuateRouter_routeReplaced");
+const routeNotFound = Symbol("fluxtuateRouter_routeNotFound");
 const loadRouter = Symbol("fluxtuateRouter_loadRouter");
 const calculateURIState = Symbol("fluxtuateRouter_calculateURIState");
 const rootFluxtuateContext = Symbol("fluxtuateRouter_rootFluxtuateContext");
@@ -73,7 +75,19 @@ export default class Router extends EventDispatcher{
             this.goToRoute(this[rootPart].toString());
         };
 
+        this[routeReplaced] = () => {
+            this.replaceRoute(this[rootPart].toString());
+        };
+
+        this[routeNotFound] = () => {
+            let notFoundPart = rootContext.generatePart();
+            this.replaceRoute(notFoundPart.toString());
+
+        };
+
         this[rootPart].addListener(ROUTE_CHANGE, this[routeChanged]);
+        this[rootPart].addListener(ROUTE_REPLACE, this[routeReplaced]);
+        this[rootPart].addListener(ROUTE_NOT_FOUND, this[routeNotFound]);
 
         while(this[locationCallbacks].length > 0) {
             this[locationCallbacks].pop()(this[rootPart]);
@@ -109,11 +123,16 @@ export default class Router extends EventDispatcher{
             uri = uri.replace(this[baseURL], "");
             if(this[activeURI] !== uri)
                 rootContext.parse(uri).then((part)=>{
+                    if(part.isNotFound) {
+                        this[routeNotFound]();
+                    }
                     this[rootPart][setRouteProperties](part);
 
                     this[rootPart].start().then(()=>{
                         this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
                     });
+                }).caught(()=>{
+                    this[routeNotFound]();
                 });
             this[activeURI] = uri;
         }
@@ -148,6 +167,24 @@ export default class Router extends EventDispatcher{
 
         if(this[useHistory]) {
             History.pushState(undefined, document.title, route);
+        }else{
+            this[goToURI](route);
+        }
+    }
+
+    replaceRoute(route, query = {}){
+        let defQuery = {};
+        this[transferQuery].forEach((qN)=>{
+            if(this.query[qN])
+                defQuery[qN] = this.query[qN];
+        });
+
+        route = processQuery(processRoute(route), Object.assign({}, query, defQuery));
+
+        route = this[baseURL] + route;
+
+        if(this[useHistory]) {
+            History.replaceState(undefined, document.title, route);
         }else{
             this[goToURI](route);
         }
