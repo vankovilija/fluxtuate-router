@@ -78,9 +78,15 @@ export default class RouterPlugin {
             configurable: true
         });
 
-        if(isFunction(med.onNavStackChange)) {
-            med.onNavStackChange(location.currentRoute);
-        }
+        setTimeout(()=>{
+            if(med.hasNavstack || med.destroyed) return;
+
+            if(isFunction(med.onNavStackChange)) {
+                med.onNavStackChange(location.currentRoute);
+            }
+
+            med.hasNavstack = true;
+        }, 30);
     }
 
     removeMediator(med) {
@@ -126,7 +132,9 @@ export default class RouterPlugin {
         if (this.destroyed) return;
 
         this.mediators.forEach((med)=> {
-            if(!med.destroyed && isFunction(med.onNavStackChange)) {
+            if(med.destroyed) return;
+
+            if(isFunction(med.onNavStackChange)) {
                 med.onNavStackChange(routeProps);
             }
             med.hasNavstack = true;
