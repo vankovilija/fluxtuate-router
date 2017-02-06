@@ -256,10 +256,12 @@ export default class RouterConfiguration {
                     throw new Error(`No such path ${path}`)
                 }
                 addConfigurationToRoute(route, Config);
-                return {
-                    withEvent: addEventToRoute.bind(undefined, route),
-                    isNotFound: isNotFound.bind(undefined, this, route)
-                }
+                let toPathReturn = {};
+
+                toPathReturn.withEvent = addEventToRoute.bind(toPathReturn, route);
+                toPathReturn.isNotFound = isNotFound.bind(toPathReturn, this, route);
+
+                return toPathReturn;
             },
             toPage (pageName) {
                 if(!pageName) throw new Error("You must provide a page name to map a config to a page!");
@@ -269,23 +271,27 @@ export default class RouterConfiguration {
                 }
                 if(!route.configurations) route.configurations = [];
                 route.configurations.push(Config);
-                return {
-                    withEvent: addEventToRoute.bind(undefined, route),
-                    isNotFound: isNotFound.bind(undefined, this, route)
-                }
+                let toPageReturn = {};
+
+                toPageReturn.withEvent = addEventToRoute.bind(toPageReturn, route);
+                toPageReturn.isNotFound = isNotFound.bind(toPageReturn, this, route);
+
+                return toPageReturn;
             },
             toAll () {
                 self[routes].forEach((route)=>{
                     if(!route.configurations) route.configurations = [];
                     route.configurations.push(Config);
                 });
-                return {
-                    withEvent: (eventName)=>{
-                        self[routes].forEach((route)=>{
-                            addEventToRoute(route, eventName);
-                        });
-                    }
-                }
+                let toAllReturn = {};
+                toAllReturn.withEvent = (eventName)=>{
+                    self[routes].forEach((route)=>{
+                        addEventToRoute(route, eventName);
+                    });
+                    return toAllReturn;
+                };
+
+                return toAllReturn;
             }
         };
     }
