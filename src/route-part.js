@@ -122,8 +122,9 @@ export default class RoutePart extends EventDispatcher {
             this.dispatch(ROUTE_CHANGE, this);
         };
 
-        this[requestNotFound] = () => {
+        this[requestNotFound] = (e) => {
             this.dispatch(ROUTE_NOT_FOUND, this);
+            return e;
         };
 
         this[requestReplacement] = () => {
@@ -221,6 +222,7 @@ export default class RoutePart extends EventDispatcher {
                 this[dispatchUpdate]();
                 this[routeUpdated] = false;
             }
+            return this;
         });
     }
 
@@ -247,11 +249,13 @@ export default class RoutePart extends EventDispatcher {
     goToRoute (route) {
         this[setRouteProperties](route);
         this[requestUpdate]();
+        return route;
     }
 
     replaceRoute (route) {
         this[setRouteProperties](route);
         this[requestReplacement]();
+        return route;
     }
 
     destroy() {

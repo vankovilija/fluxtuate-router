@@ -131,8 +131,10 @@ export default class Router extends EventDispatcher{
                     this[rootPart].start().then(()=>{
                         this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
                     });
-                }).caught(()=>{
+                    return part;
+                }).caught((e)=>{
                     this[routeNotFound]();
+                    return e;
                 });
             this[activeURI] = uri;
         }

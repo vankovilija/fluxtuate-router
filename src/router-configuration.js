@@ -139,7 +139,7 @@ export default class RouterConfiguration {
                     }
                     routeProperties.params[key][setRouteProperties](routePart);
                     return true;
-                }));
+                }).caught(()=>false));
             });
 
             return Promise.all(allContextPromises).then(()=>{
@@ -165,11 +165,16 @@ export default class RouterConfiguration {
 
             this[createPart](route, params).then((part)=>{
                 resolveRoute(part);
+                return part;
             }).caught(()=>{
                 if(isSubRoute) {
-                    rejectRoute(new Error("Route not found!"));
+                    let e = new Error("Route not found!");
+                    rejectRoute(e);
+                    return e;
                 }else{
-                    resolveRoute(this.generatePart());
+                    let part = this.generatePart();
+                    resolveRoute(part);
+                    return part;
                 }
             });
         };
