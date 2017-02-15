@@ -44,7 +44,7 @@ export default class RoutePart extends EventDispatcher {
         this[contextRoute] = context;
         this[partName] = "root";
 
-        this[fluxtuateRouterContext] = new Context().config(Config(this));
+        this[fluxtuateRouterContext] = new Context().setName("root_starting_part_context").config(Config(this));
         this[fluxtuateRouterContext][routeContext] = true;
         this[fluxtuateRouterContext].__originalDestroy = this[fluxtuateRouterContext].destroy;
         this[fluxtuateRouterContext].destroy = ()=>{
@@ -53,7 +53,7 @@ export default class RoutePart extends EventDispatcher {
             }
         };
         //...all other contexts with configurations
-        this[fluxtuateRouterContextTail] = new Context();
+        this[fluxtuateRouterContextTail] = new Context().setName("root_ending_part_context");
 
         this[fluxtuateRouterContext].addChild(this[fluxtuateRouterContextTail]);
 
@@ -140,6 +140,8 @@ export default class RoutePart extends EventDispatcher {
 
     setName(name) {
         this[partName] = name;
+        this[fluxtuateRouterContext].setName(name + "_starting_part_context");
+        this[fluxtuateRouterContextTail].setName(name + "_ending_part_context");
     }
 
     start() {
