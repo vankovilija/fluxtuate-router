@@ -100,16 +100,14 @@ export default class RouterPlugin {
     initialize(injectValue, removeValue) {
         if(this.context[routerContextSymbol]) return;
 
-        this.destroyed = false;
-
-        if(!this.context[routeContext]) {
-            if (!router) {
-                router = new Router(this.context, this.options.transferQuery, this.options.base, this.options.useHistory);
-                injectValue("location", router.location, "Gets the location for the application", false);
-            } else {
-                injectValue("location", this.location, "Gets the location for the application", false);
-            }
+        let isRoot = false;
+        if (!router) {
+            isRoot = true;
+            router = new Router(this.context, this.options.transferQuery, this.options.base, this.options.useHistory);
+            injectValue("location", router.location, "Gets the location for the application", false);
         }
+
+        this.destroyed = false;
 
         this.removeValue = removeValue;
         injectValue("router", router, "Gets the router for the application", false, "command");
@@ -120,6 +118,11 @@ export default class RouterPlugin {
             router.startRouter();
 
         if(!this.context.isStarted) {
+            this.appStartingListener = this.contextDispatcher.addListener("starting", ()=>{
+                if(!this.context[routeContext] && !isRoot){
+                    injectValue("location", this.location, "Gets the location for the application", false);
+                }
+            });
             this.appStartedListener = this.contextDispatcher.addListener("started", ()=> {
                 this.startPlugin();
             });
@@ -209,6 +212,10 @@ export default class RouterPlugin {
         if(this.routeListener1) {
             this.routeListener1.remove();
             this.routeListener1 = null;
+        }
+        if(this.appStartingListener) {
+            this.appStartingListener.remove();
+            this.appStartingListener = null;
         }
         if(this.appStartedListener) {
             this.appStartedListener.remove();

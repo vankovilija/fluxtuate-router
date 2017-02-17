@@ -128,9 +128,8 @@ export default class Router extends EventDispatcher{
                     }
                     this[rootPart][setRouteProperties](part);
 
-                    this[rootPart].start().then(()=>{
-                        this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
-                    });
+                    this[rootPart].start();
+                    this.dispatch(ROUTE_CHANGED, this[rootPart].currentRoute);
                     return part;
                 }).caught((e)=>{
                     this[routeNotFound]();

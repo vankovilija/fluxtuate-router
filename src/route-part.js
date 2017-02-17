@@ -45,6 +45,7 @@ export default class RoutePart extends EventDispatcher {
         this[partName] = "root";
 
         this[fluxtuateRouterContext] = new Context().setName("root_starting_part_context").config(Config(this));
+        this[fluxtuateRouterContext].start();
         this[fluxtuateRouterContext][routeContext] = true;
         this[fluxtuateRouterContext].__originalDestroy = this[fluxtuateRouterContext].destroy;
         this[fluxtuateRouterContext].destroy = ()=>{
@@ -145,10 +146,7 @@ export default class RoutePart extends EventDispatcher {
     }
 
     start() {
-
-        this[fluxtuateRouterContextTail].start();
-
-        let routeChangePromises = Object.keys(this[routeParts]).map((key)=>this[routeParts][key].start());
+        Object.keys(this[routeParts]).forEach((key)=>this[routeParts][key].start());
 
         let addingDifference = difference(this[newConfigurationsRoute], this[configurationsRoute]);
         let excludingDifference = difference(this[configurationsRoute], this[newConfigurationsRoute]);
@@ -185,47 +183,22 @@ export default class RoutePart extends EventDispatcher {
                     parent.addChild(newContext);
                 }
             });
-            this.endingContext.start();
             this.dispatch(ROUTE_CONTEXT_UPDATED, Object.assign({
                 startingContext: this.startingContext,
                 endingContext: this.endingContext
             }, this.currentRoute));
         }
 
-        routeChangePromises.push(new Promise((resolve)=>{
-            if(this[eventsRoute].length === 0){
-                resolve();
-            }else {
-                setTimeout(()=> {
-                    this[eventsRoute].forEach((event)=> {
-                        let innerPromises = [];
-                        this[fluxtuateContextRoute].forEach((context)=> {
-                            innerPromises.push(new Promise((resolve)=> {
-                                setTimeout(()=> {
-                                    if (context.commandMap.hasEvent(event)) {
-                                        context.commandMap.onComplete(resolve);
-                                    } else {
-                                        resolve();
-                                    }
-                                }, 0);
-                            }));
-                        });
-                        this.startingContext.dispatch(event, this.currentRoute);
-                        Promise.all(innerPromises).then(()=> {
-                            resolve();
-                        })
-                    });
-                }, 0);
-            }
-        }));
 
-        return Promise.all(routeChangePromises).then(()=>{
-            if(this[routeUpdated]) {
-                this[dispatchUpdate]();
-                this[routeUpdated] = false;
-            }
-            return this;
-        });
+        if(this[routeUpdated]) {
+            this[dispatchUpdate]();
+            this[routeUpdated] = false;
+        }
+
+        setTimeout(()=>{
+            this.endingContext.start();
+            this[eventsRoute].forEach((event)=>this.startingContext.dispatch(event, this.currentRoute));
+        }, 0);
     }
 
     goToPage (pageName, params) {

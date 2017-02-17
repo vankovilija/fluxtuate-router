@@ -8,6 +8,6 @@ export default class RedirectCommand extends Command {
     location;
 
     execute() {
-        this.location.goToPage(this.payload.name, this.payload.params, this.payload.query);
+        this.location.goToPage(this.payload.page || this.payload.name, this.payload.params, this.payload.query);
     }
 }
