@@ -56,6 +56,13 @@ export default class RoutePart extends EventDispatcher {
         //...all other contexts with configurations
         this[fluxtuateRouterContextTail] = new Context().setName("root_ending_part_context");
 
+        let realStart = this[fluxtuateRouterContextTail].start;
+
+        this[fluxtuateRouterContextTail].start = (...args) => {
+            realStart.apply(this[fluxtuateRouterContextTail], args);
+            this[eventsRoute].forEach((event)=>this.startingContext.dispatch(event, this.currentRoute));
+        };
+
         this[fluxtuateRouterContext].addChild(this[fluxtuateRouterContextTail]);
 
         this[setRouteProperties] = (routeProperties, contexts, configurations, events) => {
@@ -194,11 +201,6 @@ export default class RoutePart extends EventDispatcher {
             this[dispatchUpdate]();
             this[routeUpdated] = false;
         }
-
-        setTimeout(()=>{
-            this.endingContext.start();
-            this[eventsRoute].forEach((event)=>this.startingContext.dispatch(event, this.currentRoute));
-        }, 0);
     }
 
     goToPage (pageName, params) {
