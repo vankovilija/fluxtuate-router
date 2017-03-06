@@ -23,6 +23,7 @@ const dispatchUpdate = Symbol("fluxtuateRouter_dispatchUpdate");
 const partListeners = Symbol("fluxtuateRouter_partListeners");
 const fluxtuateRouterContext = Symbol("fluxtuateRouter_context");
 const fluxtuateRouterContextTail = Symbol("fluxtuateRouter_contextTail");
+const isNewRoute = Symbol("fluxtuateRouter_isNewRoute");
 const partName = Symbol("fluxtuateRouter_partName");
 const notFound = Symbol("fluxtuateRouter_notFound");
 
@@ -33,6 +34,7 @@ const contextSuffix = new RegExp("\\*:", "g");
 export default class RoutePart extends EventDispatcher {
     constructor (routeProperties = {}, contexts = [], configurations = [], events = [], context = {}, isNotFound = false) {
         super();
+        this[isNewRoute] = true;
         this[notFound] = isNotFound;
         this[partListeners] = [];
         this[contextsRoute] = [];
@@ -60,7 +62,10 @@ export default class RoutePart extends EventDispatcher {
 
         this[fluxtuateRouterContextTail].start = (...args) => {
             realStart.apply(this[fluxtuateRouterContextTail], args);
-            this[eventsRoute].forEach((event)=>this.startingContext.dispatch(event, this.currentRoute));
+            if(this[isNewRoute]) {
+                this[eventsRoute].forEach((event) => this.startingContext.dispatch(event, this.currentRoute));
+                this[isNewRoute] = false;
+            }
         };
 
         this[fluxtuateRouterContext].addChild(this[fluxtuateRouterContextTail]);
@@ -200,6 +205,11 @@ export default class RoutePart extends EventDispatcher {
         if(this[routeUpdated]) {
             this[dispatchUpdate]();
             this[routeUpdated] = false;
+        }
+        this[isNewRoute] = true;
+
+        if(this.startingContext.parent) {
+            this.endingContext.start();
         }
     }
 

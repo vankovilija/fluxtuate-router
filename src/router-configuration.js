@@ -139,7 +139,10 @@ export default class RouterConfiguration {
                     }
                     routeProperties.params[key][setRouteProperties](routePart);
                     return true;
-                }).caught(()=>false));
+                }).caught(()=>{
+                    isNotFound = true;
+                    return false;
+                }));
             });
 
             return Promise.all(allContextPromises).then(()=>{
