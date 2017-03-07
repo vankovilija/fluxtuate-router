@@ -14,6 +14,7 @@ const formRoute = Symbol("fluxtuateRouter_formRoutes");
 const getPageRoute = Symbol("fluxtuateRouter_getPagePath");
 const getPathRoute = Symbol("fluxtuateRouter_getRoutePath");
 const notFoundRoute = Symbol("fluxtuateRouter_notFoundRoute");
+const errorRoute = Symbol("fluxtuateRouter_errorRoute");
 const routeChangeResolve = Symbol("fluxtuateRouter_routeChangeResolve");
 const loadRoute = Symbol("fluxtuateRouter_loadRoute");
 
@@ -57,6 +58,12 @@ function isNotFound(configuration, route) {
     return this;
 }
 
+function isError(configuration, route) {
+    configuration[errorRoute] = route;
+
+    return this;
+}
+
 const resolvedPromise = new Promise((resolve)=>resolve());
 
 export default class RouterConfiguration {
@@ -65,7 +72,9 @@ export default class RouterConfiguration {
         this[parser].greedyEnabled = false;
         this[parser].ignoreState = true;
         this[parser].bypassed.add((resolveRoute, rejectRoute)=>{
-            rejectRoute(new Error("Route not found!"));
+            let error = new Error("Route not found!");
+            error.type = "notFound";
+            rejectRoute(error);
         });
         this[parser].normalizeFn = CrossRoads.NORM_AS_OBJECT;
         this[router] = containerRouter;
@@ -81,10 +90,13 @@ export default class RouterConfiguration {
 
         this[createPart] = (routeObject, params) => {
             let isNotFound = false;
+            let errorInstance = undefined;
             if(routeObject === this[notFoundRoute]){
                 isNotFound = true;
                 return new Promise((resolve, reject)=>{
-                    reject(new Error("Route not found!"));
+                    let error = new Error("Route not found!");
+                    error.type = "notFound";
+                    reject(error);
                 });
             }
             let {pageName, path, routeDefaults, contexts, configurations, events} = routeObject;
@@ -139,8 +151,12 @@ export default class RouterConfiguration {
                     }
                     routeProperties.params[key][setRouteProperties](routePart);
                     return true;
-                }).caught(()=>{
-                    isNotFound = true;
+                }).caught((e)=>{
+                    if(e.type === "notFound") {
+                        isNotFound = true;
+                    }else {
+                        errorInstance = e;
+                    }
                     return false;
                 }));
             });
@@ -148,6 +164,8 @@ export default class RouterConfiguration {
             return Promise.all(allContextPromises).then(()=>{
                 if(isNotFound){
                     return this.generatePart();
+                }else if(errorInstance){
+                    return this.generateErrorPart(errorInstance);
                 }else {
                     return new RoutePart(routeProperties, allContexts, configurations, events, this)
                 }
@@ -166,20 +184,28 @@ export default class RouterConfiguration {
                 }
             }
 
-            this[createPart](route, params).then((part)=>{
-                resolveRoute(part);
-                return part;
-            }).caught(()=>{
-                if(isSubRoute) {
-                    let e = new Error("Route not found!");
-                    rejectRoute(e);
-                    return e;
-                }else{
-                    let part = this.generatePart();
+            this[createPart](route, params)
+                .then((part)=>{
                     resolveRoute(part);
                     return part;
-                }
-            });
+                })
+                .caught((e)=>{
+                    if(isSubRoute) {
+                        let error = new Error(e.message);
+                        error.type = e.type;
+                        rejectRoute(error);
+                        return error;
+                    }else{
+                        let part;
+                        if(e.type === "notFound") {
+                            part = this.generatePart();
+                        }else{
+                            part = this.generateErrorPart(e);
+                        }
+                        resolveRoute(part);
+                        return part;
+                    }
+                });
         };
 
         this[getPathRoute] = (routePath)=>{
@@ -237,8 +263,16 @@ export default class RouterConfiguration {
         this[name] = contextName;
     }
 
-    generatePart() {
-        return new RoutePart(this[notFoundRoute], [], [], [], this, true)
+    generatePart(additionalParams) {
+        return new RoutePart(Object.assign(additionalParams || {}, this[notFoundRoute]), [], [], [], this, true)
+    }
+
+    generateErrorPart(e) {
+        let additionalParams = {error: e};
+        if(this[errorRoute]){
+            return new RoutePart(Object.assign(additionalParams, this[errorRoute]), [], [], [], this, true)
+        }
+        return this.generatePart(additionalParams);
     }
 
     mapConfig(Config) {
@@ -263,6 +297,7 @@ export default class RouterConfiguration {
 
                 toPathReturn.withEvent = addEventToRoute.bind(toPathReturn, route);
                 toPathReturn.isNotFound = isNotFound.bind(toPathReturn, this, route);
+                toPathReturn.isError = isError.bind(toPathReturn, this, route);
 
                 return toPathReturn;
             },
