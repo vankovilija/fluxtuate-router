@@ -308,7 +308,11 @@ export default class RouterConfiguration {
                     throw new Error(`No such page ${pageName}`)
                 }
                 if(!route.configurations) route.configurations = [];
-                route.configurations.push(Config);
+
+                if(route.configurations.indexOf(Config) === -1) {
+                    route.configurations.push(Config);
+                }
+
                 let toPageReturn = {};
 
                 toPageReturn.withEvent = addEventToRoute.bind(toPageReturn, route);
@@ -319,6 +323,9 @@ export default class RouterConfiguration {
             toAll () {
                 self[routes].forEach((route)=>{
                     if(!route.configurations) route.configurations = [];
+
+                    if(route.configurations.indexOf(Config) !== -1) return "continue";
+
                     route.configurations.push(Config);
                 });
                 let toAllReturn = {};

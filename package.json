@@ -3,7 +3,7 @@
   "logo": {
     "file": "./logo.png"
   },
-  "version": "0.0.84",
+  "version": "0.0.85",
   "description": "a plugin to enable routing in fluxtuate via injection of router and helper functions",
   "main": "lib/index.js",
   "scripts": {
