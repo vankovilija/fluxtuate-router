@@ -170,6 +170,9 @@ export default class RoutePart extends EventDispatcher {
 
                 let fullContextChildren = context.children.slice();
                 fullContextChildren.forEach(c=> {
+                    if(c._routerContext) {
+                        return "continue";
+                    }
                     context.removeChild(c);
                     context.parent.addChild(c);
                 });
@@ -182,6 +185,7 @@ export default class RoutePart extends EventDispatcher {
 
             addingDifference.forEach((configObject)=>{
                 let newContext = new Context();
+                newContext._routerContext = true;
                 newContext.config(configObject);
                 let fluxContexts = this[fluxtuateContextRoute].length;
                 let parent = fluxContexts > 0 ? this[fluxtuateContextRoute][fluxContexts - 1] : this[fluxtuateRouterContext];
