@@ -99,12 +99,24 @@ export default class RouterConfiguration {
                     reject(error);
                 });
             }
-            let {pageName, path, routeDefaults, contexts, configurations, events} = routeObject;
+            let {pageName, path, routeDefaults, contexts, props, configurations, events} = routeObject;
+            let validParams = Object.keys(props).concat(Object.keys(contexts).reduce((accumulator, contextKey)=>{
+                accumulator.push(contexts[contextKey].contextProp.slice(1, contexts[contextKey].contextProp.length - 1));
+                accumulator.push(contextKey);
+                return accumulator;
+            }, []));
+            let newParams = {};
+            let paramsKeys = Object.keys(params).filter((param)=>validParams.indexOf(param) !== -1);
+
+            for(let i = 0; i < paramsKeys.length; i++) {
+                newParams[paramsKeys[i]] = params[paramsKeys[i]];
+            }
+
             let routeProperties = {
                 page: pageName,
                 path: path,
                 routeDefaults: routeDefaults,
-                params: Object.assign({}, params)
+                params: newParams
             };
 
             let allContexts = Object.keys(contexts);
