@@ -85,7 +85,8 @@ export default class RoutePart extends EventDispatcher {
             let newPrams = routeProperties.params || {};
             let oldParams = this[currentRoute].params || {};
 
-            let newParamsKeys = Object.keys(newPrams);
+            let newParamsKeys = Object.keys(newPrams || {});
+            let oldParamsKeys = Object.keys(oldParams || {});
 
             this[contextsRoute].forEach((contextProp)=> {
                 let contextPart = this[currentRoute].params[contextProp];
@@ -98,15 +99,32 @@ export default class RoutePart extends EventDispatcher {
                     contextPart.destroy();
             });
 
-            if(this[currentRoute].page !== routeProperties.page || this[currentRoute].path !== routeProperties.path){
+            if(
+                this[currentRoute].page !== routeProperties.page ||
+                this[currentRoute].path !== routeProperties.path ||
+                newParamsKeys.length !== oldParamsKeys.length
+            ){
                 this[routeUpdated] = true;
             }
 
-            newParamsKeys.forEach((propKey)=> {
-                if(oldParams[propKey] !== newPrams[propKey]) {
-                    this[routeUpdated] = true;
+            if(!this[routeUpdated]) {
+                newParamsKeys.forEach((propKey) => {
+                    if (oldParams[propKey] !== newPrams[propKey]) {
+                        this[routeUpdated] = true;
+                    }
+                });
+                if(!this[routeUpdated]) {
+                    oldParamsKeys.forEach((propKey) => {
+                        if(newParamsKeys.indexOf(propKey) !== -1) {
+                            return "continue";
+                        }
+
+                        if (oldParams[propKey] !== newPrams[propKey]) {
+                            this[routeUpdated] = true;
+                        }
+                    });
                 }
-            });
+            }
 
             this[currentRoute].params = newPrams;
 

@@ -106,7 +106,7 @@ export default class RouterConfiguration {
                 return accumulator;
             }, []));
             let newParams = {};
-            let paramsKeys = Object.keys(params).filter((param)=>validParams.indexOf(param) !== -1);
+            let paramsKeys = Object.keys(params || {}).filter((param)=>validParams.indexOf(param) !== -1);
 
             for(let i = 0; i < paramsKeys.length; i++) {
                 newParams[paramsKeys[i]] = params[paramsKeys[i]];
