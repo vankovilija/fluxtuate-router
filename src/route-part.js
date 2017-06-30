@@ -30,6 +30,24 @@ const notFound = Symbol("fluxtuateRouter_notFound");
 const contextPrepend = new RegExp("\\/:context@", "g");
 const contextSuffix = new RegExp("\\*:", "g");
 
+function returnRouteParamsJSON(currentRoute) {
+    let params = currentRoute.params;
+    let keys = Object.keys(params);
+    let JSONParams = {};
+    for(let i = 0; i < keys.length; i++) {
+        if(params[keys[i]].currentRoute) {
+            JSONParams[keys[i]] = returnRouteParamsJSON(params[keys[i]].currentRoute);
+        }else {
+            JSONParams[keys[i]] = params[keys[i]];
+        }
+    }
+
+    return {
+        page: currentRoute.page,
+        params: JSON.stringify(JSONParams)
+    }
+}
+
 @autobind
 export default class RoutePart extends EventDispatcher {
     constructor (routeProperties = {}, contexts = [], configurations = [], events = [], context = {}, isNotFound = false) {
@@ -296,6 +314,10 @@ export default class RoutePart extends EventDispatcher {
 
     get isNotFound() {
         return this[notFound];
+    }
+
+    valueOf() {
+        return JSON.stringify(returnRouteParamsJSON(this.currentRoute));
     }
 
     toString () {
