@@ -40,6 +40,7 @@ function processRoute(route){
 
 function addConfigurationToRoute(route, Config) {
     if(!route.configurations) route.configurations = [];
+    if(route.constructor.indexOf(Config) !== -1) return;
     route.configurations.push(Config);
 
     return this;
@@ -47,6 +48,7 @@ function addConfigurationToRoute(route, Config) {
 
 function addEventToRoute(route, eventName) {
     if(!route.events) route.events = [];
+    if(route.events.indexOf(eventName) !== -1) return;
     route.events.push(eventName);
 
     return this;
