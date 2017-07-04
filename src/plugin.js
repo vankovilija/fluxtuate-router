@@ -39,7 +39,7 @@ export default class RouterPlugin {
 
         Object.defineProperty(med, "navstack", {
             get() {
-                return location.currentRoute.params;
+                return location.toJSON().params;
             },
             configurable: true
         });

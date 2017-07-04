@@ -44,7 +44,7 @@ function returnRouteParamsJSON(currentRoute) {
 
     return {
         page: currentRoute.page,
-        params: JSON.stringify(JSONParams)
+        params: JSONParams
     }
 }
 
@@ -284,6 +284,10 @@ export default class RoutePart extends EventDispatcher {
     destroy() {
         this[destroy]();
         this[fluxtuateRouterContext].__originalDestroy();
+    }
+
+    toJSON() {
+        return returnRouteParamsJSON(this.currentRoute);
     }
 
     get currentRoute() {
