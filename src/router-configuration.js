@@ -351,6 +351,46 @@ export default class RouterConfiguration {
                 };
 
                 return toAllReturn;
+            },
+            toAllExceptPages (...pages) {
+                self[routes].forEach((route)=>{
+                    if(!route.configurations) route.configurations = [];
+
+                    if(route.configurations.indexOf(Config) !== -1) return "continue";
+                    if(pages.indexOf(route.pageName) !== -1) return "continue";
+
+                    route.configurations.push(Config);
+                });
+                let toAllReturn = {};
+                toAllReturn.withEvent = (eventName)=>{
+                    self[routes].forEach((route)=>{
+                        if(pages.indexOf(route.pageName) !== -1) return "continue";
+                        addEventToRoute(route, eventName);
+                    });
+                    return toAllReturn;
+                };
+
+                return toAllReturn;
+            },
+            toAllExceptPaths (...paths) {
+                self[routes].forEach((route)=>{
+                    if(!route.configurations) route.configurations = [];
+
+                    if(route.configurations.indexOf(Config) !== -1) return "continue";
+                    if(paths.indexOf(route.path) !== -1) return "continue";
+
+                    route.configurations.push(Config);
+                });
+                let toAllReturn = {};
+                toAllReturn.withEvent = (eventName)=>{
+                    self[routes].forEach((route)=>{
+                        if(paths.indexOf(route.path) !== -1) return "continue";
+                        addEventToRoute(route, eventName);
+                    });
+                    return toAllReturn;
+                };
+
+                return toAllReturn;
             }
         };
     }
