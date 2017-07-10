@@ -321,7 +321,7 @@ export default class RoutePart extends EventDispatcher {
     }
 
     valueOf() {
-        return JSON.stringify(returnRouteParamsJSON(this.currentRoute));
+        return this[partName] + "_" + JSON.stringify(returnRouteParamsJSON(this.currentRoute));
     }
 
     toString () {
